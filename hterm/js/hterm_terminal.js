@@ -1317,10 +1317,10 @@ hterm.Terminal.prototype.interpret = function(str) {
  *
  * @param {HTMLDivElement} div The div to use as the terminal display.
  */
-hterm.Terminal.prototype.decorate = function(div) {
+hterm.Terminal.prototype.decorate = function(div,iframe) {
   this.div_ = div;
 
-  this.scrollPort_.decorate(div);
+  this.scrollPort_.decorate(div,iframe);
   this.scrollPort_.setBackgroundImage(this.prefs_.get('background-image'));
   this.scrollPort_.setBackgroundSize(this.prefs_.get('background-size'));
   this.scrollPort_.setBackgroundPosition(
