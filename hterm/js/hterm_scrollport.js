@@ -268,7 +268,7 @@ hterm.ScrollPort.Selection.prototype.sync = function() {
 /**
  * Turn a div into this hterm.ScrollPort.
  */
-hterm.ScrollPort.prototype.decorate = function(div,iframe_) {
+hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   this.div_ = div;
   this.iframe_ = iframe;
 
