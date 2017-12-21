@@ -13,11 +13,36 @@ lib.rtdep('lib.f', 'lib.Storage');
  */
 hterm.PreferenceManager = function(profileId) {
   lib.PreferenceManager.call(this, hterm.defaultStorage,
-                             '/hterm/profiles/' + profileId);
+                             hterm.PreferenceManager.prefix_ + profileId);
   var defs = hterm.PreferenceManager.defaultPreferences;
   Object.keys(defs).forEach(function(key) {
     this.definePreference(key, defs[key][1]);
   }.bind(this));
+};
+
+/**
+ * The storage key prefix to namespace the preferences.
+ */
+hterm.PreferenceManager.prefix_ = '/hterm/profiles/';
+
+/**
+ * List all the defined profiles.
+ *
+ * @param {function(Array<string>)} callback Called with the list of profiles.
+ */
+hterm.PreferenceManager.listProfiles = function(callback) {
+  hterm.defaultStorage.getItems(null, (items) => {
+    const profiles = {};
+    for (let key of Object.keys(items)) {
+      if (key.startsWith(hterm.PreferenceManager.prefix_)) {
+        // Turn "/hterm/profiles/foo/bar/cow" to "foo/bar/cow".
+        const subKey = key.slice(hterm.PreferenceManager.prefix_.length);
+        // Turn "foo/bar/cow" into "foo".
+        profiles[subKey.split('/', 1)[0]] = true;
+      }
+    }
+    callback(Object.keys(profiles));
+  });
 };
 
 hterm.PreferenceManager.categories = {};
@@ -27,6 +52,7 @@ hterm.PreferenceManager.categories.CopyPaste = 'CopyPaste';
 hterm.PreferenceManager.categories.Sounds = 'Sounds';
 hterm.PreferenceManager.categories.Scrolling = 'Scrolling';
 hterm.PreferenceManager.categories.Encoding = 'Encoding';
+hterm.PreferenceManager.categories.Extensions = 'Extensions';
 hterm.PreferenceManager.categories.Miscellaneous = 'Miscellaneous';
 
 /**
@@ -45,6 +71,8 @@ hterm.PreferenceManager.categoryDefinitions = [
     text: 'Scrolling'},
   { id: hterm.PreferenceManager.categories.Sounds,
     text: 'Sounds'},
+  { id: hterm.PreferenceManager.categories.Extensions,
+    text: 'Extensions'},
   { id: hterm.PreferenceManager.categories.Miscellaneous,
     text: 'Misc.'}
 ];
@@ -61,7 +89,7 @@ hterm.PreferenceManager.defaultPreferences = {
    '\'none\': Disable any AltGr related munging.\n' +
    '\'ctrl-alt\': Assume Ctrl+Alt means AltGr.\n' +
    '\'left-alt\': Assume left Alt means AltGr.\n' +
-   '\'right-alt\': Assume right Alt means AltGr.\n'],
+   '\'right-alt\': Assume right Alt means AltGr.'],
 
   'alt-backspace-is-meta-backspace':
   [hterm.PreferenceManager.categories.Keyboard, false, 'bool',
@@ -79,8 +107,8 @@ hterm.PreferenceManager.defaultPreferences = {
    '\n' +
    '  escape....... Send an ESC prefix.\n' +
    '  8-bit........ Add 128 to the unshifted character as in xterm.\n' +
-   '  browser-key.. Wait for the keypress event and see what the browser \n' +
-   '                says.  (This won\'t work well on platforms where the \n' +
+   '  browser-key.. Wait for the keypress event and see what the browser\n' +
+   '                says.  (This won\'t work well on platforms where the\n' +
    '                browser performs a default action for some alt sequences.)'
   ],
 
@@ -238,7 +266,10 @@ hterm.PreferenceManager.defaultPreferences = {
 
   'enable-clipboard-write':
   [hterm.PreferenceManager.categories.CopyPaste, true, 'bool',
-   'Allow the host to write directly to the system clipboard.'],
+   'Allow the remote host to write directly to the local system clipboard.\n' +
+   'Read access is never granted regardless of this setting.\n' +
+   '\n' +
+   'This is used to control access to features like OSC-52.'],
 
   'enable-dec12':
   [hterm.PreferenceManager.categories.Miscellaneous, false, 'bool',
@@ -246,7 +277,14 @@ hterm.PreferenceManager.defaultPreferences = {
    'DEC Private Mode 12.'],
 
   'environment':
-  [hterm.PreferenceManager.categories.Miscellaneous, {'TERM': 'xterm-256color'},
+  [hterm.PreferenceManager.categories.Miscellaneous,
+   {
+     // Signal ncurses based apps to use UTF-8 output instead of legacy drawing
+     // modes (which only work in ISO-2022 mode).  Since hterm is always UTF-8,
+     // this shouldn't cause problems.
+     'NCURSES_NO_UTF8_ACS': '1',
+     'TERM': 'xterm-256color',
+   },
    'value',
    'The default environment variables, as an object.'],
 
@@ -288,11 +326,6 @@ hterm.PreferenceManager.defaultPreferences = {
    '  "Ctrl-Shift-L": "PASS",\n' +
    '  "Ctrl-H": "\'HELLO\\n\'"\n' +
    '}'],
-
-  'max-string-sequence':
-  [hterm.PreferenceManager.categories.Encoding, 100000, 'int',
-   'Max length of a DCS, OSC, PM, or APS sequence before we give up and ' +
-   'ignore the code.'],
 
   'media-keys-are-fkeys':
   [hterm.PreferenceManager.categories.Keyboard, false, 'bool',
@@ -441,6 +474,20 @@ hterm.PreferenceManager.defaultPreferences = {
   [hterm.PreferenceManager.categories.Encoding, 'utf-8', ['utf-8', 'raw'],
    'Set the encoding for data sent to host.'],
 
+  'terminal-encoding':
+  [hterm.PreferenceManager.categories.Encoding, 'utf-8',
+   ['iso-2022', 'utf-8', 'utf-8-locked'],
+   'The default terminal encoding (DOCS).\n' +
+   '\n' +
+   'ISO-2022 enables character map translations (like graphics maps).\n' +
+   'UTF-8 disables support for those.\n' +
+   '\n' +
+   'The locked variant means the encoding cannot be changed at runtime ' +
+   'via terminal escape sequences.\n' +
+   '\n' +
+   'You should stick with UTF-8 unless you notice broken rendering with ' +
+   'legacy applications.'],
+
   'shift-insert-paste':
   [hterm.PreferenceManager.categories.Keyboard, true, 'bool',
    'Shift + Insert pastes if true, sent to host if false.'],
@@ -452,6 +499,12 @@ hterm.PreferenceManager.defaultPreferences = {
   'user-css-text':
   [hterm.PreferenceManager.categories.Appearance, '', 'multiline-string',
    'Custom CSS text for styling the terminal.'],
+
+  'allow-images-inline':
+  [hterm.PreferenceManager.categories.Extensions, null, 'tristate',
+   'Whether to allow the remote side to display images in the terminal.\n' +
+   '\n' +
+   'By default, we prompt until a choice is made.'],
 };
 
 hterm.PreferenceManager.prototype =

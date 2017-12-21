@@ -1,3 +1,40 @@
+# 1.20, 2017-12-13, Features & fixes.
+
+* refactor ranges.py for better modularity
+* add sanity check for empty test selection
+* parseQuery: support arrays
+* run replacements on default messages too
+* fix loadMessages callback
+* add a lib.f.getOs helper
+* add a lib.f.getChromeMilestone helper
+
+# 1.19, 2017-10-16, Bug fixes.
+
+* Fix message lookup on non-Chrome browsers.
+* Retry storage write failures like exceeding bandwidth quotas.
+
+# 1.18, 2017-09-12, Unicode 10.0.0 updates.
+
+* Add Object.values and Object.entries polyfills.
+* wcwidth: Merge duplicate binary search funcs.
+* wcwidth: Move east asian chars into a lookup table.
+* wcwidth: Update lookup tables to Unicode 10.0.0.
+
+# 1.17, 2017-09-01, Unicode fixes and array helpers.
+
+* Start a lib.array API for low level array/bit operations.
+* Tidy up code a bit to please linters.
+* lib.wc.substr now includes leading combining characters.
+* lib.wc.substr fix handling of surrogate pairs.
+* Use arrow functions instead of "self" references.
+
+# 1.16, 2017-08-16, Improve Unicode handling.
+
+* lib.TestManager.Log completely rewritten for better capturing & use.
+* Add a bin/load_tests.sh helper for quickly launching the tests.
+* New lib.f.randomInt helper for integer ranges.
+* lib.wc.substr now includes trailing combining characters.
+
 # 1.15, 2017-06-29, Standards improvements.
 
 * Drop old String.prototype.codePointAt polyfill.

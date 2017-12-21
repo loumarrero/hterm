@@ -1,12 +1,12 @@
 {
 	"already_mounted_message": {
-		"message": "\u05de\u05e2\u05e8\u05db\u05ea \u05d4\u05e7\u05d1\u05e6\u05d9\u05dd \u05db\u05d1\u05e8 \u05e0\u05d8\u05e2\u05e0\u05d4!"
+		"message": "מערכת הקבצים כבר נטענה!"
 	},
 	"backup_prefs": {
-		"message": "\u05e9\u05de\u05d5\u05e8 \u05e2\u05d5\u05ea\u05e7 \u05dc\u05d2\u05d9\u05d1\u05d5\u05d9"
+		"message": "שמור עותק לגיבוי"
 	},
 	"bad_destination": {
-		"message": "\u05dc\u05d0 \u05e0\u05d9\u05ea\u05df \u05dc\u05e0\u05ea\u05d7 \u05d9\u05e2\u05d3: $1",
+		"message": "לא ניתן לנתח יעד: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -14,25 +14,25 @@
 		}
 	},
 	"before_unload": {
-		"message": "\u05e1\u05d2\u05d9\u05e8\u05ea \u05db\u05e8\u05d8\u05d9\u05e1\u05d9\u05d9\u05d4 \u05d6\u05d5 \u05ea\u05e0\u05ea\u05e7 \u05d0\u05ea \u05d4\u05d4\u05e4\u05e2\u05dc\u05d4 \u05d4\u05e0\u05d5\u05db\u05d7\u05d9\u05ea."
+		"message": "סגירת כרטיסייה זו תנתק את ההפעלה הנוכחית."
 	},
 	"cancel_button_label": {
-		"message": "\u05d1\u05d9\u05d8\u05d5\u05dc"
+		"message": "ביטול"
 	},
 	"cmd_ssh_forget_host_help": {
-		"message": "\u05e4\u05e7\u05d5\u05d3\u05d4 \u05d6\u05d5 \u05de\u05e6\u05d9\u05d2\u05d4 \u05ea\u05e4\u05e8\u05d9\u05d8 \u05e9\u05dc \u05de\u05d0\u05e8\u05d7\u05d9\u05dd \u05d9\u05d3\u05d5\u05e2\u05d9\u05dd \u05d5\u05de\u05d1\u05e7\u05e9\u05ea \u05de\u05d4\u05de\u05d0\u05e8\u05d7 \u05dc\u05e9\u05db\u05d5\u05d7."
+		"message": "פקודה זו מציגה תפריט של מארחים ידועים ומבקשת מהמארח לשכוח."
 	},
 	"cmd_ssh_forget_host_title": {
-		"message": "\u200f\u05e9\u05db\u05d7 \u05de\u05d0\u05e8\u05d7 ssh \u05d9\u05d3\u05d5\u05e2."
+		"message": "‏שכח מארח ssh ידוע."
 	},
 	"cmd_ssh_help": {
-		"message": "\u05d4\u05e4\u05e8\u05de\u05d8\u05e8\u05d9\u05dd |\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9| \u05d5|\u05e9\u05dd \u05de\u05d0\u05e8\u05d7| \u05e0\u05d3\u05e8\u05e9\u05d9\u05dd, \u05d4\u05e4\u05e8\u05de\u05d8\u05e8 |\u05d9\u05e6\u05d9\u05d0\u05d4| \u05d4\u05d5\u05d0 \u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9. \u05d0\u05dd \u05d4\u05d9\u05e6\u05d9\u05d0\u05d4 \u05d0\u05d9\u05e0\u05d4 \u05de\u05e6\u05d5\u05d9\u05e0\u05ea, \u05d4\u05d9\u05d0 \u05de\u05d5\u05d2\u05d3\u05e8\u05ea \u05dc-22 \u05db\u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc."
+		"message": "‏הפרמטרים |username| ו-|hostname| נדרשים. הפרמטר |port| אופציונלי. אם היציאה לא מצוינת, ברירת המחדל היא 22."
 	},
 	"cmd_ssh_title": {
-		"message": "\u200f\u05e4\u05d5\u05ea\u05d7 \u05d4\u05e4\u05e2\u05dc\u05ea SSH \u05d7\u05d3\u05e9\u05d4."
+		"message": "‏פותח הפעלת SSH חדשה."
 	},
 	"command_complete": {
-		"message": "\u05d4\u05e4\u05e7\u05d5\u05d3\u05d4 $1 \u05d4\u05e1\u05ea\u05d9\u05d9\u05de\u05d4 \u05d5\u05d4\u05d7\u05d6\u05d9\u05e8\u05d4 \u05d0\u05ea \u05e7\u05d5\u05d3 \u05d4\u05e1\u05d8\u05d8\u05d5\u05e1 $2.",
+		"message": "הפקודה $1 הסתיימה והחזירה את קוד הסטטוס $2.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -43,13 +43,32 @@
 		}
 	},
 	"connect_button_label": {
-		"message": "\u05d4\u05ea\u05d7\u05d1\u05e8"
+		"message": "התחבר"
 	},
 	"connect_or_exit_message": {
-		"message": "\u200f\u05d4\u05e7\u05e9 \u05e2\u05dc C \u05db\u05d3\u05d9 \u05dc\u05d1\u05d7\u05d5\u05e8 \u05d7\u05d9\u05d1\u05d5\u05e8 \u05d0\u05d7\u05e8 \u05d0\u05d5 \u05e2\u05dc X \u05db\u05d3\u05d9 \u05dc\u05e6\u05d0\u05ea."
+		"message": "‏הקש על C כדי לבחור חיבור אחר או על X כדי לצאת."
 	},
 	"connecting": {
-		"message": "\u05de\u05ea\u05d7\u05d1\u05e8 \u05d0\u05dc $1...",
+		"message": "מתחבר אל $1...",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"console_crosh_options_notice": {
+		"message": "‏ידעת שיש דף אפשרויות ייעודי?\nכבר אין צורך להסתבך עם term_ directly!\nיש להקיש על $1 כדי לפתוח אותו, או ללחוץ על:\n$2",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
+	"console_nassh_options_notice": {
+		"message": "‏ידעת שיש דף אפשרויות ייעודי?\nכבר אין צורך להסתבך עם term_ directly!\n$1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -60,10 +79,10 @@
 		"message": "[DEL]"
 	},
 	"delete_button_label": {
-		"message": "\u05de\u05d7\u05e7"
+		"message": "מחק"
 	},
 	"disconnect_message": {
-		"message": "\u200f\u05e4\u05dc\u05d0\u05d2\u05d9\u05df NaCl \u05e0\u05e1\u05d2\u05e8 \u05d5\u05d4\u05d7\u05d6\u05d9\u05e8 \u05d0\u05ea \u05e7\u05d5\u05d3 \u05d4\u05e1\u05d8\u05d8\u05d5\u05e1 $1.",
+		"message": "‏פלאגין NaCl נסגר והחזיר את קוד הסטטוס $1.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -73,53 +92,47 @@
 	"enter_keycap": {
 		"message": "[ENTER]"
 	},
-	"field_argstr_aria_label": {
-		"message": "\u200f\u05d0\u05e8\u05d2\u05d5\u05de\u05e0\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd \u05dc-ssh"
-	},
 	"field_argstr_placeholder": {
-		"message": "\u05d0\u05e8\u05d2\u05d5\u05de\u05e0\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd \u05dc\u05e9\u05d5\u05e8\u05ea \u05d4\u05e4\u05e7\u05d5\u05d3\u05d4"
+		"message": "ארגומנטים נוספים לשורת הפקודה"
 	},
 	"field_description_aria_label": {
-		"message": "\u05ea\u05d9\u05d0\u05d5\u05e8"
+		"message": "תיאור"
 	},
 	"field_description_placeholder": {
-		"message": "\u200fusername@hostname \u05d0\u05d5 \u05d8\u05e7\u05e1\u05d8 \u05d7\u05d5\u05e4\u05e9\u05d9"
+		"message": "‏username@hostname או טקסט חופשי"
 	},
 	"field_hostname_aria_label": {
-		"message": "\u05e9\u05dd \u05de\u05d0\u05e8\u05d7"
+		"message": "שם מארח"
 	},
 	"field_hostname_placeholder": {
-		"message": "\u05e9\u05dd \u05de\u05d0\u05e8\u05d7"
+		"message": "שם מארח"
 	},
-	"field_identity_aria_label": {
-		"message": "\u05d6\u05d4\u05d5\u05ea"
+	"field_mount_path_placeholder": {
+		"message": "נתיב ברירת המחדל הוא ספריית הבית של המשתמש"
 	},
 	"field_port_aria_label": {
-		"message": "\u05d9\u05e6\u05d9\u05d0\u05d4"
+		"message": "יציאה"
 	},
 	"field_port_placeholder": {
-		"message": "\u05d9\u05e6\u05d9\u05d0\u05d4"
+		"message": "יציאה"
 	},
 	"field_relay_options_aria_label": {
-		"message": "\u05d0\u05e4\u05e9\u05e8\u05d5\u05d9\u05d5\u05ea \u05e9\u05dc \u05e9\u05e8\u05ea\u05d9 \u05de\u05de\u05e1\u05e8"
+		"message": "אפשרויות של שרתי ממסר"
 	},
 	"field_relay_options_placeholder": {
-		"message": "\u05d0\u05e4\u05e9\u05e8\u05d5\u05d9\u05d5\u05ea \u05e9\u05dc \u05e9\u05e8\u05ea\u05d9 \u05de\u05de\u05e1\u05e8"
-	},
-	"field_terminal_profile_aria_label": {
-		"message": "\u05e9\u05dd \u05d4\u05e4\u05e8\u05d5\u05e4\u05d9\u05dc \u05e9\u05dc \u05d4\u05de\u05e1\u05d5\u05e3"
+		"message": "‏אפשרויות של שרת ממסר SSH"
 	},
 	"field_terminal_profile_placeholder": {
-		"message": "\u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc"
+		"message": "ברירת מחדל"
 	},
 	"field_username_aria_label": {
-		"message": "\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9"
+		"message": "שם משתמש"
 	},
 	"field_username_placeholder": {
-		"message": "\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9"
+		"message": "שם משתמש"
 	},
 	"found_relay": {
-		"message": "\u05e0\u05de\u05e6\u05d0 \u05e9\u05e8\u05ea \u05de\u05de\u05e1\u05e8: $1",
+		"message": "נמצא שרת ממסר: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -127,16 +140,16 @@
 		}
 	},
 	"identity_label": {
-		"message": "\u05d6\u05d4\u05d5\u05ea"
+		"message": "זהות"
 	},
 	"import_link_aria_label": {
-		"message": "\u05d9\u05d1\u05d0 \u05e7\u05d5\u05d1\u05e5"
+		"message": "יבא קובץ"
 	},
 	"import_link_label": {
-		"message": "\u05d9\u05d1\u05d0..."
+		"message": "יבא..."
 	},
 	"initializing_relay": {
-		"message": "\u05de\u05d7\u05e4\u05e9 \u05e9\u05e8\u05ea \u05de\u05de\u05e1\u05e8 \u05d1\u05d0\u05de\u05e6\u05e2\u05d5\u05ea: $1",
+		"message": "מחפש שרת ממסר באמצעות: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -144,18 +157,21 @@
 		}
 	},
 	"json_parse_error": {
-		"message": "\u200f\u05dc\u05d0 \u05e0\u05d9\u05ea\u05df \u05d4\u05d9\u05d4 \u05dc\u05e0\u05ea\u05d7 \u05d0\u05ea \u05e7\u05d5\u05d1\u05e5 \u05d4-JSON \u05d1-$1",
+		"message": "‏לא ניתן היה לנתח נתוני JSON ב-'$1': $2",
 		"placeholders": {
 			"1": {
 				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
 			}
 		}
 	},
 	"known_hosts_empty": {
-		"message": "\u05d0\u05d9\u05df \u05de\u05d0\u05e8\u05d7\u05d9\u05dd \u05d9\u05d3\u05d5\u05e2\u05d9\u05dd, \u05d0\u05d9\u05df \u05de\u05d4 \u05dc\u05e9\u05db\u05d5\u05d7."
+		"message": "אין מארחים ידועים, אין מה לשכוח."
 	},
 	"known_hosts_prompt": {
-		"message": "\u05d1\u05d7\u05e8 \u05de\u05d0\u05e8\u05d7 \u05db\u05d3\u05d9 \u05dc\u05e9\u05db\u05d5\u05d7 [1 - $1]:",
+		"message": "בחר מארח כדי לשכוח [1 - $1]:",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -163,13 +179,13 @@
 		}
 	},
 	"known_hosts_title": {
-		"message": "\u05de\u05d0\u05e8\u05d7\u05d9\u05dd \u05d9\u05d3\u05d5\u05e2\u05d9\u05dd:"
+		"message": "מארחים ידועים:"
 	},
 	"loading_label": {
-		"message": "\u05d8\u05d5\u05e2\u05df..."
+		"message": "טוען..."
 	},
 	"missing_param": {
-		"message": "\u05d7\u05e1\u05e8 \u05d4\u05e4\u05e8\u05de\u05d8\u05e8: $1",
+		"message": "חסר הפרמטר: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -177,19 +193,25 @@
 		}
 	},
 	"mount_button_label": {
-		"message": "\u200f\u05d8\u05e2\u05d9\u05e0\u05ea SFTP"
+		"message": "‏טעינת SFTP"
+	},
+	"mount_path_label": {
+		"message": "נתיב טעינה"
 	},
 	"mounted_message": {
-		"message": "\u05e0\u05d8\u05e2\u05df!"
+		"message": "נטען!"
 	},
 	"notify_copy": {
-		"message": "\u05d4\u05d8\u05e7\u05e1\u05d8 \u05d4\u05d5\u05e2\u05ea\u05e7"
+		"message": "הטקסט הועתק"
 	},
 	"ok_button_label": {
-		"message": "\u05d0\u05d9\u05e9\u05d5\u05e8"
+		"message": "אישור"
+	},
+	"omnibox_default": {
+		"message": "‏<url><match>user@hostname[:port]</match></url> יש להתחבר אל פרופיל שמור או אל מערכת SSH חדשה."
 	},
 	"open_as_window_tip": {
-		"message": "\u200f[\u05d8\u05d9\u05e4 \u05dc\u05de\u05ea\u05e7\u05d3\u05de\u05d9\u05dd] \u05db\u05d3\u05d9 \u05e9\u05dc\u05d7\u05d9\u05e6\u05d4 \u05e2\u05dc Control+W \u05dc\u05d0 \u05ea\u05e1\u05d2\u05d5\u05e8 \u05d0\u05ea \u05d4\u05de\u05e1\u05d5\u05e3, \u05d4\u05e9\u05ea\u05de\u05e9 \u05d1\u05d0\u05e4\u05e9\u05e8\u05d5\u05ea '\u05e4\u05ea\u05d7 \u05db\u05d7\u05dc\u05d5\u05df'.\n[\u05d8\u05d9\u05e4 \u05dc\u05de\u05ea\u05e7\u05d3\u05de\u05d9\u05dd] \u05e2\u05d1\u05d5\u05e8 \u05d0\u05dc $1 \u05dc\u05e7\u05d1\u05dc\u05ea \u05de\u05d9\u05d3\u05e2 \u05e0\u05d5\u05e1\u05e3.",
+		"message": "‏[טיפ למתקדמים] האפשרות 'פתח כחלון' מונעת מהקשה על Control-W לסגור את המסוף.\n[טיפ למתקדמים] אפשר לקרוא מידע נוסף בכתובת $1.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -197,63 +219,126 @@
 		}
 	},
 	"options_button_label": {
-		"message": "\u05d0\u05e4\u05e9\u05e8\u05d5\u05d9\u05d5\u05ea"
+		"message": "אפשרויות"
 	},
 	"plugin_loading": {
-		"message": "\u200f\u05d8\u05d5\u05e2\u05df \u05e4\u05dc\u05d0\u05d2\u05d9\u05df \u05e9\u05dc NaCl ..."
+		"message": "‏טוען פלאגין של NaCl ..."
 	},
 	"plugin_loading_complete": {
-		"message": " \u05d1\u05d5\u05e6\u05e2."
+		"message": " בוצע."
+	},
+	"plugin_loading_failed": {
+		"message": " הטעינה נכשלה :("
 	},
 	"pref_backup_filename": {
 		"message": "Secure Shell Preferences Backup.json"
 	},
 	"preferences_header": {
-		"message": "\u05d4\u05d2\u05d3\u05e8\u05d5\u05ea \u05e4\u05e8\u05d5\u05e4\u05d9\u05dc"
+		"message": "הגדרות פרופיל"
 	},
 	"preferences_reset": {
-		"message": "\u05d0\u05d9\u05e4\u05e1\u05ea \u05d0\u05ea \u05db\u05dc \u05d4\u05d4\u05e2\u05d3\u05e4\u05d5\u05ea."
+		"message": "איפסת את כל ההעדפות."
 	},
 	"reconnect_message": {
-		"message": "\u200f\u05d4\u05e7\u05e9 \u05e2\u05dc R \u05db\u05d3\u05d9 \u05dc\u05d4\u05ea\u05d7\u05d1\u05e8 \u05de\u05d7\u05d3\u05e9, \u05e2\u05dc C \u05db\u05d3\u05d9 \u05dc\u05d1\u05d7\u05d5\u05e8 \u05d7\u05d9\u05d1\u05d5\u05e8 \u05d0\u05d7\u05e8 \u05d0\u05d5 \u05e2\u05dc X \u05db\u05d3\u05d9 \u05dc\u05e6\u05d0\u05ea."
+		"message": "‏הקש על R כדי להתחבר מחדש, על C כדי לבחור חיבור אחר או על X כדי לצאת."
 	},
 	"relay_retry": {
-		"message": "\u05de\u05e0\u05e1\u05d4 \u05e9\u05d5\u05d1..."
+		"message": "מנסה שוב..."
 	},
 	"restore_prefs": {
-		"message": "\u05e9\u05d7\u05d6\u05e8 \u05d0\u05ea \u05d4\u05d2\u05d9\u05d1\u05d5\u05d9"
+		"message": "שחזר את הגיבוי"
 	},
 	"shortcut_list_aria_label": {
-		"message": "\u05d7\u05d9\u05d1\u05d5\u05e8\u05d9\u05dd \u05e9\u05e0\u05e9\u05de\u05e8\u05d5"
+		"message": "חיבורים שנשמרו"
 	},
 	"ssh_argstr_label": {
-		"message": "\u200f\u05d0\u05e8\u05d2\u05d5\u05de\u05e0\u05d8\u05d9\u05dd \u05dc-SSH"
+		"message": "‏ארגומנטים ל-SSH"
 	},
 	"terminal_preview_label": {
-		"message": "\u05ea\u05e6\u05d5\u05d2\u05d4 \u05de\u05e7\u05d3\u05d9\u05de\u05d4"
+		"message": "תצוגה מקדימה"
 	},
 	"terminal_profile_label": {
-		"message": "\u05d4\u05e4\u05e8\u05d5\u05e4\u05d9\u05dc \u05d4\u05e0\u05d5\u05db\u05d7\u05d9"
+		"message": "הפרופיל הנוכחי"
+	},
+	"tip_1": {
+		"message": "‏כדי לפתוח קישורים אפשר להקיש הקשה ארוכה על Ctrl (המקש Cmd ב-macOS) תוך כדי לחיצה עליהם."
+	},
+	"tip_10": {
+		"message": "‏כשהיישום פועל בחלון, אפשר להקיש על Ctrl-Shift-N כדי לפתוח הפעלה חדשה."
+	},
+	"tip_11": {
+		"message": "‏אפשר לקשר מחדש מקשים/מקשי קיצור: https://goo.gl/LWRndr"
+	},
+	"tip_2": {
+		"message": "‏אפשר להציג הודעות בדפדפן בעזרת hterm-notify‏: https://goo.gl/ZNxGdF"
+	},
+	"tip_3": {
+		"message": "‏כדי להתחבר מסרגל הכתובות יש להקליד ‎'ssh <profile name>': https://goo.gl/V7o8ki"
+	},
+	"tip_4": {
+		"message": "‏Chrome OS יכול לטעון מערכות קבצים דרך SFTP ולאפשר עיון דרך היישום 'קבצים'. יש להשתמש ב-'SFTP Mount' במקום ב-'Connect'."
+	},
+	"tip_5": {
+		"message": "‏יש להתחבר בעזרת קישורי ssh://‎ בדפי אינטרנט או לשמור סימניה: https://goo.gl/zS8EZD"
+	},
+	"tip_6": {
+		"message": "‏אפשר לצבוע את הפלט/הודעה ב-16 צבעים בסיסיים, 256 צבעים וצבעי 24 סיביות מלאים: http://tldp.org/HOWTO/Bash-Prompt-HOWTO/x329.html"
+	},
+	"tip_7": {
+		"message": "‏אפשר להעתיק אל הלוח מ-emacs/vim/etc... בעזרת OSC-52‏: https://goo.gl/XSnyLo"
+	},
+	"tip_8": {
+		"message": "‏אפשר לשוחח בצ'אט עם משתמשי hterm/Secure Shell אחרים דרך  chromium-hterm@chromium.org‏: https://goo.gl/RYHiK"
+	},
+	"tip_9": {
+		"message": "‏מצאת באג? רוצה לבקש תכונה חדשה? נשמח לשמוע: https://goo.gl/vb94JY"
 	},
 	"unexpected_error": {
-		"message": "\u200f\u05d0\u05d9\u05e8\u05e2\u05d4 \u05e9\u05d2\u05d9\u05d0\u05d4 \u05dc\u05d0 \u05e6\u05e4\u05d5\u05d9\u05d4, \u05d1\u05d3\u05d5\u05e7 \u05d1\u05dc\u05d5\u05d7 Javascript \u05dc\u05e7\u05d1\u05dc\u05ea \u05e4\u05e8\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd."
+		"message": "‏אירעה שגיאה לא צפויה, בדוק בלוח Javascript לקבלת פרטים נוספים."
 	},
 	"unmount_button_label": {
-		"message": "\u200f\u05d1\u05d8\u05dc \u05d0\u05ea \u05d4\u05d8\u05e2\u05d9\u05e0\u05d4 \u05e9\u05dc SFTP"
+		"message": "‏בטל את הטעינה של SFTP"
 	},
 	"update_available_tooltip": {
-		"message": "\u05d9\u05e9 \u05e2\u05d3\u05db\u05d5\u05df \u05d6\u05de\u05d9\u05df. \u05e1\u05d2\u05d5\u05e8 \u05d0\u05ea \u05db\u05dc \u05d4\u05d7\u05dc\u05d5\u05e0\u05d5\u05ea."
+		"message": "יש עדכון זמין. עליך לסגור את כל החלונות."
 	},
-	"welcome_faq": {
-		"message": "\u200f\u05ea\u05e9\u05d5\u05d1\u05d5\u05ea \u05dc\u05e9\u05d0\u05dc\u05d5\u05ea \u05e0\u05e4\u05d5\u05e6\u05d5\u05ea. $1 (\u05d4\u05e7\u05e9 \u05e2\u05dc ctrl \u05d5\u05dc\u05d7\u05e5 \u05e2\u05dc \u05e7\u05d9\u05e9\u05d5\u05e8 \u05db\u05d3\u05d9 \u05dc\u05e4\u05ea\u05d5\u05d7 \u05d0\u05d5\u05ea\u05d5)",
+	"welcome_changelog": {
+		"message": "‏ChangeLog/נתוני גירסה: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
 			}
 		}
 	},
+	"welcome_faq": {
+		"message": "‏תשובות לשאלות נפוצות. $1 (הקש על ctrl ולחץ על קישור כדי לפתוח אותו)",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"welcome_release_highlights": {
+		"message": "שינויים משמעותיים מאז $1:",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"welcome_tip_of_day": {
+		"message": "טיפ אקראי למתקדמים מס' $1: $2",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
 	"welcome_version": {
-		"message": "\u05d1\u05e8\u05d5\u05db\u05d9\u05dd \u05d4\u05d1\u05d0\u05d9\u05dd \u05dc\u05d2\u05e8\u05e1\u05d4 $2 \u05e9\u05dc $1.",
+		"message": "ברוכים הבאים לגרסה $2 של $1.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -264,6 +349,6 @@
 		}
 	},
 	"zoom_warning": {
-		"message": "\u200f\u05e2\u05d1\u05d5\u05e8 \u05d0\u05dc \u05ea\u05e4\u05e8\u05d9\u05d8 Chrome > \u05de\u05e8\u05d7\u05e7 \u05de\u05d4\u05ea\u05e6\u05d5\u05d2\u05d4 \u05d5\u05e9\u05e0\u05d4 \u05d0\u05ea \u05d4\u05d4\u05d2\u05d3\u05e8\u05d4 \u05dc-100%."
+		"message": "‏עבור אל תפריט Chrome > מרחק מהתצוגה ושנה את ההגדרה ל-100%."
 	}
 }

@@ -154,6 +154,24 @@ hterm.VT.Tests.addTest('utf8', function(result, cx) {
   });
 
 /**
+ * Verify we don't drop combining characters.
+ *
+ * Note: The exact output here is somewhat debatable.  Combining characters
+ * should follow "real" characters, not escape sequences that we filter out.
+ * So you could argue that this should be âbc or abĉ.  We happen to (almost)
+ * produce âbc currently, but if logic changes in hterm that makes it more
+ * difficult to pull off, that's OK.  This test is partially a sanity check
+ * to make sure we don't significantly regress (like we have in the past) by
+ * producing something like "âc".
+ */
+hterm.VT.Tests.addTest('utf8-combining', function(result, cx) {
+    this.terminal.interpret('abc\b\b\xcc\x82\n');
+    var text = this.terminal.getRowsText(0, 1);
+    result.assertEQ(text, 'a\u{302}bc');
+    result.pass();
+  });
+
+/**
  * Basic cursor positioning tests.
  *
  * TODO(rginda): Test the VT52 variants too.
@@ -275,9 +293,9 @@ hterm.VT.Tests.addTest('8-bit-control', function(result, cx) {
   });
 
 /**
- * Test that long unterminated sequences are properly ignored.
+ * If we see embedded escape sequences, we should reject them.
  */
-hterm.VT.Tests.addTest('unterminated-sequence', function(result, cx) {
+hterm.VT.Tests.addTest('embedded-escape-sequence', function(result, cx) {
     var title = null;
     this.terminal.setWindowTitle = function(t) {
       // Set a default title so we can catch the potential for this function
@@ -285,33 +303,56 @@ hterm.VT.Tests.addTest('unterminated-sequence', function(result, cx) {
       title = t || 'XXX';
     };
 
-    // Lower this threshold to make the test simpler.
-    this.terminal.vt.maxStringSequence = 10;
+    // We know we're going to cause chokes, so silence the warnings.
+    this.terminal.vt.warnUnimplemented = false;
 
-    // The "0;" is part of the sequence, so we only have 8 bytes left.
-    this.terminal.interpret('\x1b]0;12345678\x07!!');
-    result.assertEQ(title, '12345678');
-    result.assertEQ(this.terminal.getRowsText(0, 1), '!!');
+    ['\a', '\x1b\\'].forEach((seq) => {
+      // We get all the data at once with a terminated sequence.
+      terminal.reset();
+      this.terminal.interpret('\x1b]0;asdf\x1b x ' + seq);
+      result.assertEQ(title, null);
 
-    title = null;
+      // We get the data in pieces w/a terminated sequence.
+      terminal.reset();
+      this.terminal.interpret('\x1b]0;asdf');
+      this.terminal.interpret('\x1b');
+      this.terminal.interpret(' x ' + seq);
+      result.assertEQ(title, null);
+    });
+
+    // We get the data in pieces but no terminating sequence.
     terminal.reset();
-    this.terminal.interpret('\x1b]0;12345');
-    this.terminal.interpret('678\x07!!');
-    result.assertEQ(title, '12345678');
-    result.assertEQ(this.terminal.getRowsText(0, 1), '!!');
-
-    title = null;
-    terminal.reset();
-    this.terminal.interpret('\x1b]0;123456789\x07!!');
+    this.terminal.interpret('\x1b]0;asdf');
+    this.terminal.interpret('\x1b');
+    this.terminal.interpret(' ');
     result.assertEQ(title, null);
-    result.assertEQ(this.terminal.getRowsText(0, 1), '0;123456789!!');
 
+    result.pass();
+  });
+
+/**
+ * Verify that split ST sequences are buffered/handled correctly.
+ */
+hterm.VT.Tests.addTest('split-ST-sequence', function(result, cx) {
+    var title = null;
+    this.terminal.setWindowTitle = function(t) {
+      // Set a default title so we can catch the potential for this function
+      // to be called on accident with no parameter.
+      title = t || 'XXX';
+    };
+
+    // We get the first half of the ST with the base.
+    this.terminal.interpret('\x1b]0;asdf\x1b');
+    this.terminal.interpret('\\');
+    result.assertEQ(title, 'asdf');
+
+    // We get the first half of the ST one byte at a time.
     title = null;
     terminal.reset();
-    this.terminal.interpret('\x1b]0;12345');
-    this.terminal.interpret('6789\x07!!');
-    result.assertEQ(title, null);
-    result.assertEQ(this.terminal.getRowsText(0, 1), '0;123456789!!');
+    this.terminal.interpret('\x1b]0;asdf');
+    this.terminal.interpret('\x1b');
+    this.terminal.interpret('\\');
+    result.assertEQ(title, 'asdf');
 
     result.pass();
   });
@@ -510,7 +551,7 @@ hterm.VT.Tests.addTest('erase-right-widechar', function(result, cx) {
 
     var text = this.terminal.getRowsText(0, 3);
     result.assertEQ('\u7b2c\u4e00\u884c\n' +
-                    'OO\n' +
+                    ' OO\n' +
                     '\u7b2c\u4e09\u884c',
                     text);
     result.pass();
@@ -848,7 +889,7 @@ hterm.VT.Tests.addTest('color-change', function(result, cx) {
     for (var i = 0; i < 6; i++) {
       var row = this.terminal.getRowNode(i);
       result.assertEQ(row.childNodes.length, 2, 'i: ' + i);
-      result.assertEQ(row.childNodes[0].nodeType, 3, 'i: ' + i);
+      result.assertEQ(row.childNodes[0].nodeType, Node.TEXT_NODE, 'i: ' + i);
       result.assertEQ(row.childNodes[0].length, 13, 'i: ' + i);
       result.assertEQ(row.childNodes[1].nodeName, 'SPAN', 'i: ' + i);
       result.assert(!!row.childNodes[1].style.color, 'i: ' + i);
@@ -881,7 +922,7 @@ hterm.VT.Tests.addTest('color-change-wc', function(result, cx) {
     for (var i = 0; i < 6; i++) {
       var row = this.terminal.getRowNode(i);
       result.assertEQ(row.childNodes.length, 2, 'i: ' + i);
-      result.assertEQ(row.childNodes[0].nodeType, 3, 'i: ' + i);
+      result.assertEQ(row.childNodes[0].nodeType, Node.TEXT_NODE, 'i: ' + i);
       result.assertEQ(row.childNodes[0].length, 13, 'i: ' + i);
       result.assertEQ(row.childNodes[1].nodeName, 'SPAN', 'i: ' + i);
       result.assert(!!row.childNodes[1].style.color, 'i: ' + i);
@@ -1098,6 +1139,12 @@ hterm.VT.Tests.addTest('mode-bits', function(result, cx) {
     this.terminal.interpret('\x1b[?67l');
     result.assertEQ(this.terminal.keyboard.backspaceSendsBackspace, false);
 
+    this.terminal.interpret('\x1b[?1004h]');
+    result.assertEQ(this.terminal.reportFocus, true);
+
+    this.terminal.interpret('\x1b[?1004l]');
+    result.assertEQ(this.terminal.reportFocus, false);
+
     this.terminal.interpret('\x1b[?1036h');
     result.assertEQ(this.terminal.keyboard.metaSendsEscape, true);
 
@@ -1132,7 +1179,234 @@ hterm.VT.Tests.addTest('mode-bits', function(result, cx) {
     result.pass();
   });
 
-/*
+/**
+ * Check parseInt behavior.
+ */
+hterm.VT.Tests.addTest('parsestate-parseint', function(result, cx) {
+  const parserState = new hterm.VT.ParseState();
+
+  // Check default arg handling.
+  result.assertEQ(0, parserState.parseInt(''));
+  result.assertEQ(0, parserState.parseInt('', 0));
+  result.assertEQ(1, parserState.parseInt('', 1));
+
+  // Check default arg handling when explicitly zero.
+  result.assertEQ(0, parserState.parseInt('0'));
+  result.assertEQ(0, parserState.parseInt('0', 0));
+  result.assertEQ(1, parserState.parseInt('0', 1));
+
+  // Check non-default args.
+  result.assertEQ(5, parserState.parseInt('5'));
+  result.assertEQ(5, parserState.parseInt('5', 0));
+  result.assertEQ(5, parserState.parseInt('5', 1));
+
+  result.pass();
+});
+
+/**
+ * Check iarg handling.
+ */
+hterm.VT.Tests.addTest('parsestate-iarg', function(result, cx) {
+  const parserState = new hterm.VT.ParseState();
+
+  // Check unset args.
+  result.assertEQ(0, parserState.iarg(10));
+  result.assertEQ(1, parserState.iarg(10, 1));
+
+  // Check set args.
+  parserState.args = [0, 5];
+  result.assertEQ(0, parserState.iarg(10));
+  result.assertEQ(1, parserState.iarg(10, 1));
+  result.assertEQ(0, parserState.iarg(0));
+  result.assertEQ(1, parserState.iarg(0, 1));
+  result.assertEQ(5, parserState.iarg(1));
+  result.assertEQ(5, parserState.iarg(1, 1));
+
+  result.pass();
+});
+
+/**
+ * Check handling of subargs.
+ */
+hterm.VT.Tests.addTest('parsestate-subargs', function(result, cx) {
+  const parserState = new hterm.VT.ParseState();
+
+  // Check initial/null state.
+  result.assert(!parserState.argHasSubargs(0));
+  result.assert(!parserState.argHasSubargs(1000));
+
+  // Mark one arg as having subargs.
+  parserState.argSetSubargs(1);
+  result.assert(!parserState.argHasSubargs(0));
+  result.assert(parserState.argHasSubargs(1));
+
+  result.pass();
+});
+
+/**
+ * Check handling of extended ISO 8613-6 colors.
+ */
+hterm.VT.Tests.addTest('sgr-extended-colors-parser', function(result, cx) {
+  const parserState = new hterm.VT.ParseState();
+  const ta = this.terminal.getTextAttributes();
+
+  [
+    // Fully semi-colon separated args.
+    [0, '38;2;10;20;30', 4, 'rgb(10, 20, 30)'],
+    [1, '4;38;2;10;20;30', 4, 'rgb(10, 20, 30)'],
+    [0, '38;5;1', 2, 1],
+    [1, '4;38;5;1', 2, 1],
+    // Fully colon delimited, but legacy xterm form.
+    [0, '38:2:10:20:30', 0, 'rgb(10, 20, 30)'],
+    [1, '4;38:2:10:20:30', 0, 'rgb(10, 20, 30)'],
+    // Fully colon delimited matching ISO 8613-6.
+    [0, '38:0', 0, undefined],
+    [0, '38:1', 0, 'rgba(0, 0, 0, 0)'],
+    [0, '38:2::10:20:30', 0, 'rgb(10, 20, 30)'],
+    [0, '38:2::10:20:30:', 0, 'rgb(10, 20, 30)'],
+    [0, '38:2::10:20:30::', 0, 'rgb(10, 20, 30)'],
+    // TODO: Add CMY & CMYK forms when we support them.
+    [0, '38:5:1', 0, 1],
+    [1, '4;38:5:1', 0, 1],
+    // Reject the xterm form that mixes semi-colons & colons.
+    [0, '38;2:10:20:30', 0, undefined],
+    [0, '38;5:1', 0, undefined],
+    // Reject too short forms.
+    [0, '38;2', 0, undefined],
+    [0, '38;2;10', 0, undefined],
+    [0, '38;2;10;20', 0, undefined],
+    [0, '38:2', 0, undefined],
+    [0, '38:2:10', 0, undefined],
+    [0, '38:2:10:20', 0, undefined],
+    [0, '38:3::10:20', 0, undefined],
+    [0, '38:4::10:20:30', 0, undefined],
+    [0, '38:5', 0, undefined],
+    // Reject non-true color & palete color forms -- require ISO 8613-6.
+    [0, '38;0', 0, undefined],
+    [0, '38;1', 0, undefined],
+    [0, '38;3;10;20;30', 0, undefined],
+    [0, '38;4;10;20;30;40', 0, undefined],
+    // Reject out of range color number.
+    [0, '38:5:100000', 0, undefined],
+  ].forEach(([i, input, expSkipCount, expColor]) => {
+    // Set up the parser state from the inputs.
+    const args = input.split(';');
+    parserState.args = args;
+    parserState.subargs = {};
+    for (let i = 0; i < args.length; ++i)
+      parserState.subargs[i] = args[i].includes(':');
+
+    const ret = this.terminal.vt.parseSgrExtendedColors(parserState, i, ta);
+    result.assertEQ(expSkipCount, ret.skipCount, input);
+    result.assertEQ(expColor, ret.color, input);
+  });
+
+  result.pass();
+});
+
+/**
+ * Test setting of true color mode in colon delimited formats.
+ *
+ * This also indirectly checks chaining SGR behavior.
+ */
+hterm.VT.Tests.addTest('true-color-colon', function(result, cx) {
+  let text;
+  let style;
+  const ta = this.terminal.getTextAttributes();
+
+  // Check fully semi-colon delimited: 38;2;R;G;Bm
+  this.terminal.interpret('\x1b[38;2;110;120;130;48;2;10;20;30;4mHI1');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(110, 120, 130)', style.color);
+  result.assertEQ('rgb(10, 20, 30)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI1', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+
+  // Check fully colon delimited (xterm-specific): 38:2:R:G:Bm
+  this.terminal.interpret('\x1b[38:2:170:180:190;48:2:70:80:90;4mHI2');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(170, 180, 190)', style.color);
+  result.assertEQ('rgb(70, 80, 90)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI2', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+
+  // Check fully colon delimited (ISO 8613-6): 38:2::R:G:Bm
+  this.terminal.interpret('\x1b[38:2::171:181:191;48:2::71:81:91;4mHI3');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(171, 181, 191)', style.color);
+  result.assertEQ('rgb(71, 81, 91)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI3', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+
+  // Check fully colon delimited w/extra args (ISO 8613-6): 38:2::R:G:B::m
+  this.terminal.interpret('\x1b[38:2::172:182:192::;48:2::72:82:92::;4mHI4');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(172, 182, 192)', style.color);
+  result.assertEQ('rgb(72, 82, 92)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI4', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+
+  // Check fully colon delimited w/too few args (ISO 8613-6): 38:2::R
+  this.terminal.interpret('\x1b[38:2::33;48:2::44;4mHI5');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('', style.color);
+  result.assertEQ('', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI5', text);
+
+  result.pass();
+});
+
+/**
+ * Test setting of 256 color mode in colon delimited formats.
+ */
+hterm.VT.Tests.addTest('256-color-colon', function(result, cx) {
+  let text;
+  let style;
+  const ta = this.terminal.getTextAttributes();
+
+  // Check fully semi-colon delimited: 38;5;Pm
+  this.terminal.interpret('\x1b[38;5;10;48;5;20;4mHI1');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(0, 186, 19)', style.color);
+  result.assertEQ('rgb(0, 0, 215)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI1', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+
+  // Check fully colon delimited: 38:5:Pm
+  this.terminal.interpret('\x1b[38:5:50;48:5:60;4mHI2');
+  result.assertEQ(true, ta.underline);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(0, 255, 215)', style.color);
+  result.assertEQ('rgb(95, 95, 135)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI2', text);
+
+  result.pass();
+});
+
+/**
  * Test setting of true color mode on text
  */
 hterm.VT.Tests.addTest('true-color-mode', function(result, cx) {
@@ -1176,6 +1450,76 @@ hterm.VT.Tests.addTest('true-color-mode', function(result, cx) {
     result.pass();
   });
 
+/**
+ * Check chained SGR sequences.
+ */
+hterm.VT.Tests.addTest('chained-sgr', function(result, cx) {
+  let text;
+  let style;
+  const ta = this.terminal.getTextAttributes();
+
+  // Check true color parsing.
+  this.terminal.interpret('\x1b[' +
+                          // Reset everything.
+                          '0;' +
+                          // Enable bold.
+                          '1;' +
+                          // Set foreground via true color.
+                          '38;2;11;22;33;' +
+                          // Enable italic.
+                          '3;' +
+                          // Set background via true color.
+                          '48;2;33;22;11;' +
+                          // Enable underline.
+                          '4' +
+                          'mHI1');
+  result.assertEQ(true, ta.bold);
+  result.assertEQ(true, ta.italic);
+  result.assertEQ(true, ta.underline);
+  result.assertEQ(false, ta.faint);
+  result.assertEQ(false, ta.strikethrough);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(11, 22, 33)', style.color);
+  result.assertEQ('rgb(33, 22, 11)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI1', text);
+
+  this.terminal.reset();
+  this.terminal.clearHome();
+  result.assertEQ(false, ta.bold);
+  result.assertEQ(false, ta.italic);
+  result.assertEQ(false, ta.underline);
+  result.assertEQ(false, ta.faint);
+  result.assertEQ(false, ta.strikethrough);
+
+  // Check 256 color parsing.
+  this.terminal.interpret('\x1b[' +
+                          // Reset everything.
+                          '0;' +
+                          // Enable bold.
+                          '1;' +
+                          // Set foreground via true color.
+                          '38;5;11;' +
+                          // Enable italic.
+                          '3;' +
+                          // Set background via true color.
+                          '48;5;22;' +
+                          // Enable underline.
+                          '4' +
+                          'mHI2');
+  result.assertEQ(true, ta.bold);
+  result.assertEQ(true, ta.italic);
+  result.assertEQ(true, ta.underline);
+  result.assertEQ(false, ta.faint);
+  result.assertEQ(false, ta.strikethrough);
+  style = this.terminal.getRowNode(0).childNodes[0].style;
+  result.assertEQ('rgb(252, 233, 79)', style.color);
+  result.assertEQ('rgb(0, 95, 0)', style.backgroundColor);
+  text = this.terminal.getRowText(0);
+  result.assertEQ('HI2', text);
+
+  result.pass();
+});
 
 /**
  * TODO(rginda): Test origin mode.
@@ -1445,6 +1789,90 @@ hterm.VT.Tests.addTest('alternate-screen', function(result, cx) {
   });
 
 /**
+ * Test basic hyperlinks.
+ */
+hterm.VT.Tests.addTest('OSC-8', function(result, cx) {
+  const tattrs = this.terminal.getTextAttributes();
+
+  // Start with links off.
+  result.assertEQ(null, tattrs.uriId);
+  result.assertEQ(null, tattrs.uri);
+
+  // Start to linkify some text.
+  this.terminal.interpret('\x1b]8;id=foo;http://foo\x07');
+  result.assertEQ('foo', tattrs.uriId);
+  result.assertEQ('http://foo', tattrs.uri);
+
+  // Add the actual text.
+  this.terminal.interpret('click me');
+
+  // Stop the link.
+  this.terminal.interpret('\x1b]8;\x07');
+  result.assertEQ(null, tattrs.uriId);
+  result.assertEQ(null, tattrs.uri);
+
+  // Check the link.
+  // XXX: Can't check the URI target due to binding via event listener.
+  const row = this.terminal.getRowNode(0);
+  const span = row.childNodes[0];
+  result.assertEQ('foo', span.uriId);
+  result.assertEQ('click me', span.textContent);
+  result.assertEQ('uri-node', span.className);
+
+  result.pass();
+});
+
+/**
+ * Test hyperlinks with blank ids.
+ */
+hterm.VT.Tests.addTest('OSC-8-blank-id', function(result, cx) {
+  const tattrs = this.terminal.getTextAttributes();
+
+  // Create a link with a blank id.
+  this.terminal.interpret('\x1b]8;;http://foo\x07click\x1b]8;\x07');
+  result.assertEQ(null, tattrs.uriId);
+  result.assertEQ(null, tattrs.uri);
+
+  // Check the link.
+  // XXX: Can't check the URI target due to binding via event listener.
+  const row = this.terminal.getRowNode(0);
+  const span = row.childNodes[0];
+  result.assertEQ('', span.uriId);
+  result.assertEQ('click', span.textContent);
+  result.assertEQ('uri-node', span.className);
+
+  result.pass();
+});
+
+/**
+ * Test changing hyperlinks midstream.
+ */
+hterm.VT.Tests.addTest('OSC-8-switch-uri', function(result, cx) {
+  const tattrs = this.terminal.getTextAttributes();
+
+  // Create a link then change it.
+  this.terminal.interpret(
+      '\x1b]8;id=foo;http://foo\x07click\x1b]8;;http://bar\x07bat\x1b]8;\x07');
+  result.assertEQ(null, tattrs.uriId);
+  result.assertEQ(null, tattrs.uri);
+
+  // Check the links.
+  // XXX: Can't check the URI target due to binding via event listener.
+  const row = this.terminal.getRowNode(0);
+  let span = row.childNodes[0];
+  result.assertEQ('foo', span.uriId);
+  result.assertEQ('click', span.textContent);
+  result.assertEQ('uri-node', span.className);
+
+  span = row.childNodes[1];
+  result.assertEQ('', span.uriId);
+  result.assertEQ('bat', span.textContent);
+  result.assertEQ('uri-node', span.className);
+
+  result.pass();
+});
+
+/**
  * Test iTerm2 growl notifications.
  */
 hterm.VT.Tests.addTest('OSC-9', function(result, cx) {
@@ -1462,6 +1890,88 @@ hterm.VT.Tests.addTest('OSC-9', function(result, cx) {
     this.terminal.interpret('\x1b]9;this is a title\x07');
     result.assertEQ(2, Notification.count);
     result.assertEQ('this is a title', Notification.call.body);
+
+    result.pass();
+  });
+
+/**
+ * Verify setting text foreground color.
+ */
+hterm.VT.Tests.addTest('OSC-10', function(result, cx) {
+    // Make sure other colors aren't changed by accident.
+    const backColor = this.terminal.getBackgroundColor();
+    const cursorColor = this.terminal.getCursorColor();
+
+    this.terminal.interpret('\x1b]10;red\x07');
+    result.assertEQ('rgb(255, 0, 0)', this.terminal.getForegroundColor());
+
+    this.terminal.interpret('\x1b]10;white\x07');
+    result.assertEQ('rgb(255, 255, 255)', this.terminal.getForegroundColor());
+
+    // Make sure other colors aren't changed by accident.
+    result.assertEQ(backColor, this.terminal.getBackgroundColor());
+    result.assertEQ(cursorColor, this.terminal.getCursorColor());
+
+    result.pass();
+  });
+
+/**
+ * Verify setting text background color.
+ */
+hterm.VT.Tests.addTest('OSC-11', function(result, cx) {
+    // Make sure other colors aren't changed by accident.
+    const foreColor = this.terminal.getForegroundColor();
+    const cursorColor = this.terminal.getCursorColor();
+
+    this.terminal.interpret('\x1b]11;red\x07');
+    result.assertEQ('rgb(255, 0, 0)', this.terminal.getBackgroundColor());
+
+    this.terminal.interpret('\x1b]11;white\x07');
+    result.assertEQ('rgb(255, 255, 255)', this.terminal.getBackgroundColor());
+
+    // Make sure other colors aren't changed by accident.
+    result.assertEQ(foreColor, this.terminal.getForegroundColor());
+    result.assertEQ(cursorColor, this.terminal.getCursorColor());
+
+    result.pass();
+  });
+
+/**
+ * Verify setting text cursor color (not the mouse cursor).
+ */
+hterm.VT.Tests.addTest('OSC-12', function(result, cx) {
+    // Make sure other colors aren't changed by accident.
+    const foreColor = this.terminal.getForegroundColor();
+    const backColor = this.terminal.getBackgroundColor();
+
+    this.terminal.interpret('\x1b]12;red\x07');
+    result.assertEQ('rgb(255, 0, 0)', this.terminal.getCursorColor());
+
+    this.terminal.interpret('\x1b]12;white\x07');
+    result.assertEQ('rgb(255, 255, 255)', this.terminal.getCursorColor());
+
+    // Make sure other colors aren't changed by accident.
+    result.assertEQ(foreColor, this.terminal.getForegroundColor());
+    result.assertEQ(backColor, this.terminal.getBackgroundColor());
+
+    result.pass();
+  });
+
+/**
+ * Verify chaining color change requests.
+ */
+hterm.VT.Tests.addTest('OSC-10-11-12', function(result, cx) {
+    // Set 10-11-12 at once.
+    this.terminal.interpret('\x1b]10;red;green;blue\x07');
+    result.assertEQ('rgb(255, 0, 0)', this.terminal.getForegroundColor());
+    result.assertEQ('rgb(0, 255, 0)', this.terminal.getBackgroundColor());
+    result.assertEQ('rgb(0, 0, 255)', this.terminal.getCursorColor());
+
+    // Set 11-12 at once (and 10 stays the same).
+    this.terminal.interpret('\x1b]11;white;black\x07');
+    result.assertEQ('rgb(255, 0, 0)', this.terminal.getForegroundColor());
+    result.assertEQ('rgb(255, 255, 255)', this.terminal.getBackgroundColor());
+    result.assertEQ('rgb(0, 0, 0)', this.terminal.getCursorColor());
 
     result.pass();
   });
@@ -1508,8 +2018,6 @@ hterm.VT.Tests.addTest('OSC-52-big', function(result, cx) {
     for (var i = 0; i < expect.length / 6; i++) {
       encode += 'eHh4';
     }
-
-    this.terminal.vt.maxStringSequence = expect.length * 3;
 
     this.terminal.interpret('\x1b]52;c;');
     this.terminal.interpret(encode);
@@ -1611,6 +2119,130 @@ hterm.VT.Tests.addTest('OSC-777-notify', function(result, cx) {
   });
 
 /**
+ * Test iTerm2 1337 non-file transfers.
+ */
+hterm.VT.Tests.addTest('OSC-1337-ignore', function(result, cx) {
+  this.terminal.displayImage =
+      () => result.fail('Unknown should not trigger file display');
+
+  this.terminal.interpret('\x1b]1337;CursorShape=1\x07');
+
+  result.pass();
+});
+
+/**
+ * Test iTerm2 1337 file transfer defaults.
+ */
+hterm.VT.Tests.addTest('OSC-1337-file-defaults', function(result, cx) {
+  this.terminal.displayImage = (options) => {
+    result.assertEQ('', options.name);
+    result.assertEQ(0, options.size);
+    result.assertEQ(true, options.preserveAspectRatio);
+    result.assertEQ(false, options.inline);
+    result.assertEQ('auto', options.width);
+    result.assertEQ('auto', options.height);
+    result.assertEQ('left', options.align);
+    result.assertEQ('data:application/octet-stream;base64,Cg==',
+                    options.uri);
+    result.pass();
+  };
+
+  this.terminal.interpret('\x1b]1337;File=:Cg==\x07');
+});
+
+/**
+ * Test iTerm2 1337 invalid values.
+ */
+hterm.VT.Tests.addTest('OSC-1337-file-invalid', function(result, cx) {
+  this.terminal.displayImage = (options) => {
+    result.assertEQ('', options.name);
+    result.assertEQ(1, options.size);
+    result.assertEQ(undefined, options.unk);
+    result.pass();
+  };
+
+  this.terminal.interpret(
+      '\x1b]1337;File=' +
+      // Ignore unknown keys.
+      'unk=key;' +
+      // The name is supposed to be base64 encoded.
+      'name=[oo]ps;' +
+      // Include a valid field to make sure we parsed it all
+      'size=1;;;:Cg==\x07');
+});
+
+/**
+ * Test iTerm2 1337 valid options.
+ */
+hterm.VT.Tests.addTest('OSC-1337-file-valid', function(result, cx) {
+  // Check "false" values.
+  this.terminal.displayImage = (options) => {
+    result.assertEQ(false, options.preserveAspectRatio);
+    result.assertEQ(false, options.inline);
+  };
+  this.terminal.interpret(
+      '\x1b]1337;File=preserveAspectRatio=0;inline=0:Cg==\x07');
+
+  // Check "true" values.
+  this.terminal.displayImage = (options) => {
+    result.assertEQ(true, options.preserveAspectRatio);
+    result.assertEQ(true, options.inline);
+  };
+  this.terminal.interpret(
+      '\x1b]1337;File=preserveAspectRatio=1;inline=1:Cg==\x07');
+
+  // Check the rest.
+  this.terminal.displayImage = (options) => {
+    result.assertEQ('yes', options.name);
+    result.assertEQ(1234, options.size);
+    result.assertEQ('12px', options.width);
+    result.assertEQ('50%', options.height);
+    result.assertEQ('center', options.align);
+
+    result.pass();
+  };
+  this.terminal.interpret(
+      '\x1b]1337;File=' +
+      'name=eWVz;' +
+      'size=1234;' +
+      'width=12px;' +
+      'height=50%;' +
+      'align=center;' +
+      ':Cg==\x07');
+});
+
+/**
+ * Test handling of extra data after an iTerm2 1337 file sequence.
+ */
+hterm.VT.Tests.addTest('OSC-1337-file-queue', function(result, cx) {
+  let text;
+
+  // For non-inline files, things will be processed right away.
+  this.terminal.displayImage = () => {};
+  this.terminal.interpret('\x1b]1337;File=:Cg==\x07OK');
+  text = this.terminal.getRowsText(0, 1);
+  result.assertEQ('OK', text);
+
+  // For inline files, things should be delayed.
+  // The io/timeout logic is supposed to mock the normal behavior.
+  this.terminal.displayImage = function() {
+    const io = this.io.push();
+    setTimeout(() => {
+      io.pop();
+      text = this.getRowsText(0, 1);
+      result.assertEQ('OK', text);
+      result.pass();
+    }, 0);
+  };
+  this.terminal.clearHome();
+  this.terminal.interpret('\x1b]1337;File=inline=1:Cg==\x07OK');
+  text = this.terminal.getRowsText(0, 1);
+  result.assertEQ('', text);
+
+  result.requestTime(200);
+});
+
+/**
  * Test the cursor shape changes using DECSCUSR.
  */
 hterm.VT.Tests.addTest('DECSCUSR, cursor shapes', function(result, cx) {
@@ -1693,3 +2325,180 @@ hterm.VT.Tests.addTest('fullscreen', function(result, cx) {
 
     result.requestTime(200);
   });
+
+/**
+ * Verify switching character maps works.
+ */
+hterm.VT.Tests.addTest('character-maps', function(result, cx) {
+    // Create a line with all the printable characters.
+    var i, line = '';
+    for (i = 0x20; i < 0x7f; ++i)
+      line += String.fromCharCode(i);
+
+    this.terminal.setWidth(line.length);
+
+    // Start with sanity check -- no translations are active.
+    this.terminal.clearHome();
+    this.terminal.interpret(line);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    // Loop through all the maps.
+    var map, gl;
+    for (map in hterm.VT.CharacterMaps.DefaultMaps) {
+      // If this map doesn't do any translations, skip it.
+      gl = hterm.VT.CharacterMaps.DefaultMaps[map].GL;
+      if (!gl)
+        continue;
+
+      // Point G0 to the specified map (and assume GL points to G0).
+      this.terminal.clearHome();
+      this.terminal.interpret('\x1b(' + map + line);
+      result.assertEQ(this.terminal.getRowText(0), gl(line));
+    }
+
+    result.pass();
+  });
+
+/**
+ * Verify DOCS (encoding) switching behavior.
+ */
+hterm.VT.Tests.addTest('docs', function(result, cx) {
+    // Create a line with all the printable characters.
+    var i, graphicsLine, line = '';
+    for (i = 0x20; i < 0x7f; ++i)
+      line += String.fromCharCode(i);
+    graphicsLine = hterm.VT.CharacterMaps.DefaultMaps['0'].GL(line);
+
+    this.terminal.setWidth(line.length);
+
+    // Check the default encoding (ECMA-35).
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, false);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+    this.terminal.clearHome();
+    this.terminal.interpret(line);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    // Switch to the graphics map and make sure it translates.
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b(0' + line);
+    result.assertEQ(this.terminal.getRowText(0), graphicsLine);
+
+    // Switch to UTF-8 encoding.  The graphics map should not translate.
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%G' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    // Switch to ECMA-35 encoding.  The graphics map should translate.
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%@' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, false);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+    result.assertEQ(this.terminal.getRowText(0), graphicsLine);
+
+    // Switch to UTF-8 encoding (and lock).
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%/G' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, true);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    // Switching back to ECMA-35 should not work now.
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%@' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, true);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    // Try other UTF-8 modes (although they're the same as /G).
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%/H' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, true);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    this.terminal.clearHome();
+    this.terminal.interpret('\x1b%/I' + line)
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, true);
+    result.assertEQ(this.terminal.getRowText(0), line);
+
+    result.pass();
+  });
+
+/**
+ * Verify DOCS (encoding) invalid escapes don't mess things up.
+ */
+hterm.VT.Tests.addTest('docs-invalid', function(result, cx) {
+    // Check the default encoding (ECMA-35).
+    result.assertEQ(this.terminal.vt.codingSystemUtf8_, false);
+    result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+
+    // Try switching to a random set of invalid escapes.
+    var ch;
+    ['a', '9', 'X', '(', '}'].forEach((ch) => {
+      // First in ECMA-35 encoding.
+      this.terminal.interpret('\x1b%@');
+      this.terminal.interpret('\x1b%' + ch);
+      result.assertEQ(this.terminal.vt.codingSystemUtf8_, false);
+      result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+      result.assertEQ(this.terminal.getRowText(0), '');
+
+      this.terminal.interpret('\x1b%/' + ch);
+      result.assertEQ(this.terminal.vt.codingSystemUtf8_, false);
+      result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+      result.assertEQ(this.terminal.getRowText(0), '');
+
+      // Then in UTF-8 encoding.
+      this.terminal.interpret('\x1b%G');
+      this.terminal.interpret('\x1b%' + ch);
+      result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+      result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+      result.assertEQ(this.terminal.getRowText(0), '');
+
+      this.terminal.interpret('\x1b%/' + ch);
+      result.assertEQ(this.terminal.vt.codingSystemUtf8_, true);
+      result.assertEQ(this.terminal.vt.codingSystemLocked_, false);
+      result.assertEQ(this.terminal.getRowText(0), '');
+    });
+
+    result.pass();
+  });
+
+/**
+ * Check cursor save/restore behavior.
+ */
+hterm.VT.Tests.addTest('cursor-save-restore', function(result, cx) {
+  let tattrs;
+
+  // Save the current cursor state.
+  this.terminal.interpret('\x1b[?1048h');
+
+  // Change cursor attributes.
+  this.terminal.interpret('\x1b[1;4m');
+  tattrs = this.terminal.getTextAttributes();
+  result.assertEQ(true, tattrs.bold);
+  result.assertEQ(true, tattrs.underline);
+
+  // Change color palette a bit.
+  result.assertEQ('rgb(0, 0, 0)', tattrs.colorPalette[0]);
+  result.assertEQ('rgb(204, 0, 0)', tattrs.colorPalette[1]);
+  this.terminal.interpret('\x1b]4;1;#112233;\x07');
+  result.assertEQ('rgb(0, 0, 0)', tattrs.colorPalette[0]);
+  result.assertEQ('rgba(17, 34, 51, 1)', tattrs.colorPalette[1]);
+
+  // Restore the saved cursor state.
+  this.terminal.interpret('\x1b[?1048l');
+
+  // Check attributes were restored correctly.
+  tattrs = this.terminal.getTextAttributes();
+  result.assertEQ(false, tattrs.bold);
+  result.assertEQ(false, tattrs.underline);
+
+  // Make sure color palette did not change.
+  result.assertEQ('rgb(0, 0, 0)', tattrs.colorPalette[0]);
+  result.assertEQ('rgba(17, 34, 51, 1)', tattrs.colorPalette[1]);
+
+  result.pass();
+});

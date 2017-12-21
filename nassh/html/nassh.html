@@ -2,6 +2,7 @@
 <html>
   <head>
     <script src='../js/nassh_deps.concat.js'></script>
+    <script src='../third_party/google-smart-card/google-smart-card-client-library.js'></script>
 
     <script src='../js/nassh.js'></script>
     <script src='../js/nassh_command_instance.js'></script>
@@ -12,7 +13,13 @@
     <script src='../js/nassh_stream_set.js'></script>
     <script src='../js/nassh_stream_tty.js'></script>
     <script src='../js/nassh_stream_google_relay.js'></script>
+    <script src='../js/nassh_stream_sshagent.js'></script>
     <script src='../js/nassh_stream_sshagent_relay.js'></script>
+    <script src='../js/nassh_agent_message.js'></script>
+    <script src='../js/nassh_agent_message_types.js'></script>
+    <script src='../js/nassh_agent.js'></script>
+    <script src='../js/nassh_agent_backend.js'></script>
+    <script src='../js/nassh_agent_backend_gsc.js'></script>
 
     <style>
       body {
@@ -22,6 +29,7 @@
         height: 100%;
         width: 100%;
         overflow: hidden;
+        background-color: black;
       }
 
       #update-notification {

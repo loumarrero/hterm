@@ -46,8 +46,14 @@ nassh.CommandInstance = function(argv) {
   // An HTML5 DirectoryEntry for /.ssh/.
   this.sshDirectoryEntry_ = null;
 
+  // The version of the ssh client to load.
+  this.sshClientVersion_ = 'pnacl';
+
   // Application ID of auth agent.
   this.authAgentAppID_ = null;
+
+  // Internal SSH agent.
+  this.authAgent_ = null;
 
   // Whether the instance is a SFTP instance.
   this.isSftp = argv.isSftp || false;
@@ -129,15 +135,11 @@ nassh.CommandInstance.prototype.run = function() {
     this.io.println(
         nassh.msg('WELCOME_FAQ', ['\x1b[1mhttps://goo.gl/muppJj\x1b[m']));
 
-    if (hterm.windowType != 'popup') {
-      var osx = window.navigator.userAgent.match(/Mac OS X/);
-      if (!osx) {
-        this.io.println('');
-        this.io.println(
-            nassh.msg('OPEN_AS_WINDOW_TIP',
-                      ['\x1b[1mhttps://goo.gl/muppJj\x1b[m']));
-        this.io.println('');
-      }
+    if (hterm.windowType != 'popup' && hterm.os != 'mac') {
+      this.io.println('');
+      this.io.println(nassh.msg('OPEN_AS_WINDOW_TIP',
+                                ['\x1b[1mhttps://goo.gl/muppJj\x1b[m']));
+      this.io.println('');
     }
 
     // Show some release highlights the first couple of runs with a new version.
@@ -159,6 +161,13 @@ nassh.CommandInstance.prototype.run = function() {
       this.io.println(notes.replace(/%/g, '\r\n \u00A4'));
       this.prefs_.set('welcome/show-count', notesShowCount + 1);
     }
+
+    // Display a random tip every time they launch to advertise features.
+    let num = lib.f.randomInt(1, 13);
+    this.io.println('');
+    this.io.println(nassh.msg('WELCOME_TIP_OF_DAY',
+                              [num, nassh.msg(`TIP_${num}`)]));
+    this.io.println('');
 
     if (this.manifest_.name.match(/\(tot\)/)) {
       // If we're a tot version, show how old the hterm deps are.
@@ -232,7 +241,8 @@ nassh.CommandInstance.prototype.reconnect = function(argstr) {
 
   this.io = this.argv_.io.push();
 
-  this.plugin_.parentNode.removeChild(this.plugin_);
+  if (this.plugin_)
+    this.plugin_.parentNode.removeChild(this.plugin_);
   this.plugin_ = null;
 
   this.stdoutAcknowledgeCount_ = 0;
@@ -326,6 +336,42 @@ nassh.CommandInstance.prototype.promptForDestination_ = function(opt_default) {
     this.dispatchMessage_('connect-dialog', this.onConnectDialog_, event.data);
   };
 
+  // Resize the connection dialog iframe to try and fit all the content,
+  // but not more.  This way we don't end up with a lot of empty space.
+  function resize() {
+    let body = this.iframe_.contentWindow.document.body;
+    let shortcutList = body.querySelector('#shortcut-list');
+    let dialogBillboard = body.querySelector('.dialog-billboard');
+    let dialogButtons = body.querySelector('.dialog-buttons');
+
+    this.container_.style.height = '0px';
+    let height = shortcutList.scrollHeight +
+                 dialogBillboard.scrollHeight +
+                 dialogButtons.scrollHeight;
+    // Since the document has a bit of border/padding, fudge the height
+    // slightly higher than the few main elements we calculated above.
+    height *= 1.15;
+
+    // We don't have to worry about this being too big or too small as the
+    // frame CSS has set min/max height attributes.
+    this.container_.style.height = height + 'px';
+  }
+
+  // Once the dialog has finished loading all of its data, resize it.
+  connectDialog.onLoad = function() {
+    // Shift the dialog to be relative to the bottom so the notices/links we
+    // show at the top of the are more readily visible.
+    this.container_.style.top = '';
+    this.container_.style.bottom = '10%';
+
+    var resize_ = resize.bind(this);
+    resize_();
+    window.addEventListener('resize', resize_);
+  };
+
+  // Clear retry count whenever we show the dialog.
+  sessionStorage.removeItem('googleRelay.redirectCount');
+
   connectDialog.show();
 };
 
@@ -365,8 +411,13 @@ nassh.CommandInstance.prototype.mountProfile = function(
     profileID, querystr) {
 
   var onReadStorage = () => {
-    // TODO(rginda): Soft fail on unknown profileID.
-    var prefs = this.prefs_.getProfile(profileID);
+    try {
+      var prefs = this.prefs_.getProfile(profileID);
+    } catch (e) {
+      this.io.println(nassh.msg('GET_PROFILE_ERROR', [profileID, e]));
+      this.exit(1, true);
+      return;
+    }
 
     document.querySelector('#terminal').focus();
 
@@ -426,8 +477,13 @@ nassh.CommandInstance.prototype.connectToProfile = function(
     profileID, querystr) {
 
   var onReadStorage = () => {
-    // TODO(rginda): Soft fail on unknown profileID.
-    var prefs = this.prefs_.getProfile(profileID);
+    try {
+      var prefs = this.prefs_.getProfile(profileID);
+    } catch (e) {
+      this.io.println(nassh.msg('GET_PROFILE_ERROR', [profileID, e]));
+      this.exit(1, true);
+      return;
+    }
 
     document.querySelector('#terminal').focus();
 
@@ -578,6 +634,54 @@ nassh.CommandInstance.prototype.mountDestination = function(destination) {
 };
 
 /**
+ * Split the ssh command line string up into its components.
+ *
+ * We currently only support simple quoting -- no nested or escaped.
+ * That would require a proper lexer in here and not utilize regex.
+ * See https://crbug.com/725625 for details.
+ *
+ * @param {string} argstr The full ssh command line.
+ * @return {Object} The various components.
+ */
+nassh.CommandInstance.splitCommandLine = function(argstr) {
+  var args = argstr || '';
+  var command = '';
+
+  // Tokenize the string first.
+  var i;
+  var ary = args.match(/("[^"]*"|\S+)/g);
+  if (ary) {
+    // If there is a -- separator in here, we split that off and leave the
+    // command line untouched (other than normalizing of whitespace between
+    // any arguments, and unused leading/trailing whitespace).
+    i = ary.indexOf('--');
+    if (i != -1) {
+      command = ary.splice(i + 1).join(' ').trim();
+      // Remove the -- delimiter.
+      ary.pop();
+    }
+
+    // Now we have to dequote the remaining arguments.  The regex above did:
+    // '-o "foo bar"' -> ['-o', '"foo bar"']
+    // Based on our (simple) rules, there shouldn't be any other quotes.
+    ary = ary.map((x) => x.replace(/(^"|"$)/g, ''));
+  } else {
+    // Strip out any whitespace.  There shouldn't be anything left that the
+    // regex wouldn't have matched, but let's be paranoid.
+    args = args.trim();
+    if (args)
+      ary = [args];
+    else
+      ary = [];
+  }
+
+  return {
+    args: ary,
+    command: command,
+  };
+};
+
+/**
  * Initiate a connection to a remote host.
  *
  * @param {string} username The username to provide.
@@ -598,9 +702,15 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   }
 
   if (params.relayOptions) {
-    var relay = new nassh.GoogleRelay(this.io, params.relayOptions,
-                                      this.terminalLocation,
-                                      this.storage);
+    try {
+      var relay = new nassh.GoogleRelay(this.io, params.relayOptions,
+                                        this.terminalLocation,
+                                        this.storage);
+    } catch (e) {
+      this.io.println(nassh.msg('RELAY_OPTIONS_ERROR', [e]));
+      this.exit(-1);
+      return false;
+    }
 
     // TODO(rginda): The `if (relay.proxyHost)` test is part of a goofy hack
     // to add the --ssh-agent param to the relay-options pref.  --ssh-agent has
@@ -642,9 +752,25 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
     if (relay.options['--ssh-agent'])
       params.authAgentAppID = relay.options['--ssh-agent'];
     params.authAgentForward = relay.options['auth-agent-forward'];
+
+    if (relay.options['--ssh-client-version'])
+      this.sshClientVersion_ = relay.options['--ssh-client-version'];
+  }
+
+  if (!this.sshClientVersion_.match(/^[a-zA-Z0-9.-]+$/)) {
+    this.io.println(nassh.msg('UNKNOWN_SSH_CLIENT_VERSION',
+                              [this.sshClientVersion_]));
+    this.exit(127);
+    return false;
   }
 
   this.authAgentAppID_ = params.authAgentAppID;
+  // If the agent app ID is not just an app ID, we parse it for the IDs of
+  // built-in agent backends based on nassh.agent.Backend.
+  if (this.authAgentAppID_ && !/^[a-z]{32}$/.test(this.authAgentAppID_)) {
+    const backendIDs = this.authAgentAppID_.split(',');
+    this.authAgent_ = new nassh.agent.Agent(backendIDs, this.io.terminal_);
+  }
 
   this.io.setTerminalProfile(params.terminalProfile || 'default');
 
@@ -673,6 +799,9 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   argv.environment = this.environment_;
   argv.writeWindow = 8 * 1024;
 
+  if (this.isSftp)
+    argv.subsystem = 'sftp';
+
   argv.arguments = ['-C'];  // enable compression
 
   if (params.authAgentAppID) {
@@ -685,17 +814,6 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   if (argv.useJsSocket)
     argv.arguments.push('-o CheckHostIP=no');
 
-  var commandArgs;
-  if (params.argstr) {
-    var ary = params.argstr.match(/^(.*?)(?:(?:^|\s+)(?:--\s+(.*)))?$/);
-    if (ary) {
-      if (ary[1])
-        argv.arguments = argv.arguments.concat(ary[1].trim().split(/\s+/));
-      if (ary[2])
-        commandArgs = ary[2].trim();
-    }
-  }
-
   if (params.identity)
     argv.arguments.push('-i/.ssh/' + params.identity);
   if (params.port)
@@ -706,14 +824,13 @@ nassh.CommandInstance.prototype.connectTo = function(params) {
   argv.arguments.push('-l' + params.username);
   argv.arguments.push(idn_hostname);
 
-  // If this is a SFTP connection, the remote command args don't make sense,
-  // and will actually cause a problem.  Since it's easy to do, just ignore
-  // them here.
-  if (this.isSftp) {
-    argv.arguments.push('-s', 'sftp');
-  } else if (commandArgs) {
-    argv.arguments.push(commandArgs);
-  }
+  // Finally, we append the custom command line the user has constructed.
+  // This matches native `ssh` behavior and makes our lives simpler.
+  var extraArgs = nassh.CommandInstance.splitCommandLine(params.argstr);
+  if (extraArgs.args)
+    argv.arguments = argv.arguments.concat(extraArgs.args);
+  if (extraArgs.command)
+    argv.arguments.push('--', extraArgs.command);
 
   this.initPlugin_(() => {
       if (!nassh.v2)
@@ -755,7 +872,7 @@ nassh.CommandInstance.prototype.initPlugin_ = function(onComplete) {
        'width: 0;' +
        'height: 0;');
 
-  var pluginURL = '../plugin/pnacl/ssh_client.nmf';
+  const pluginURL = `../plugin/${this.sshClientVersion_}/ssh_client.nmf`;
 
   this.plugin_.setAttribute('src', pluginURL);
   this.plugin_.setAttribute('type', 'application/x-nacl');
@@ -1026,10 +1143,19 @@ nassh.CommandInstance.prototype.onPlugin_.openSocket = function(fd, host, port) 
 
   if (port == 0 && host == this.authAgentAppID_) {
     // Request for auth-agent connection.
-    stream = this.streams_.openStream(nassh.Stream.SSHAgentRelay, fd,
-      {authAgentAppID: this.authAgentAppID_}, (success) => {
-        this.sendToPlugin_('onOpenSocket', [fd, success, false]);
-      });
+    if (this.authAgent_) {
+      stream = this.streams_.openStream(
+          nassh.Stream.SSHAgent, fd, {authAgent: this.authAgent_},
+          (success) => {
+            this.sendToPlugin_('onOpenSocket', [fd, success, false]);
+          });
+    } else {
+      stream = this.streams_.openStream(
+          nassh.Stream.SSHAgentRelay, fd,
+          {authAgentAppID: this.authAgentAppID_}, (success) => {
+            this.sendToPlugin_('onOpenSocket', [fd, success, false]);
+          });
+    }
   } else {
     // Regular relay connection request.
     if (!this.relay_) {
@@ -1092,6 +1218,10 @@ function isSftpInitResponse(data) {
  * SFTP Initialization handler. Mounts the SFTP connection as a file system.
  */
 nassh.CommandInstance.prototype.onSftpInitialised = function() {
+  // Newer versions of Chrome support this API, but olders will error out.
+  if (lib.f.getChromeMilestone() >= 64)
+    this.mountOptions['persistent'] = false;
+
   // Mount file system.
   chrome.fileSystemProvider.mount(this.mountOptions);
 

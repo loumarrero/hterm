@@ -16,7 +16,9 @@ lib.wc.Tests.addTest('strWidth-test', function(result, cx) {
   var nullChar = '\u0000';
   var controlChar = '\r';
   var musicalSign = '\uD834\uDD00';
-  var wideSurrogatePair = '\uD842\uDD9D';
+  var wideSurrogatePair = '\uD842\uDD9D';  // U+2099d 𠦝
+  var narrowSurrogatePair = '\uD83D\uDE6B';  // U+1f66b 🙫
+  var combiningChar = 'A\u030A';
 
   result.assertEQ(1, lib.wc.strWidth(asciiOnechar), 'ASCII char has wcwidth 1');
   result.assertEQ(15, lib.wc.strWidth(asciiString), 'ASCII string');
@@ -33,6 +35,29 @@ lib.wc.Tests.addTest('strWidth-test', function(result, cx) {
                   'A surrogate pair is considered as a single character.');
   result.assertEQ(2, lib.wc.strWidth(wideSurrogatePair),
                   'A wide character represented in a surrogate pair.');
+  result.assertEQ(1, lib.wc.strWidth(narrowSurrogatePair),
+                  'A narrow character represented in a surrogate pair.');
+  result.assertEQ(1, lib.wc.strWidth(combiningChar),
+                  'A combining character.');
+
+  result.pass();
+});
+
+/**
+ * Verify behavior for all codepoints below 0xa0.  It's quick & easy to do so,
+ * and this func has optimizations for them specifically.
+ */
+lib.wc.Tests.addTest('charWidthDisregardAmbiguous-low', function(result, cs) {
+  var i;
+
+  for (i = 0; i < 0x20; ++i)
+    result.assertEQ(0, lib.wc.charWidthDisregardAmbiguous(i));
+
+  for (i = 0x20; i < 0x7f; ++i)
+    result.assertEQ(1, lib.wc.charWidthDisregardAmbiguous(i));
+
+  for (i = 0x7f; i < 0xa0; ++i)
+    result.assertEQ(0, lib.wc.charWidthDisregardAmbiguous(i));
 
   result.pass();
 });
@@ -65,6 +90,8 @@ lib.wc.Tests.addTest('substr-test', function(result, cx) {
   var widecharOnechar = '\u4E2D';
   var widecharString = '\u4E2D\u6587\u5B57\u4E32\u4E2D\u6587\u5B57\u4E32';
   var mixedString = '12345\u4E2D\u6587\u5B57\u4E3267890';
+  var combiningString = '123A\u030A456';
+  var leadingCombiningString = '\u{30a}x';
 
   result.assertEQ('1', lib.wc.substr(asciiOnechar, 0, 1));
   result.assertEQ('1', lib.wc.substr(asciiOnechar, 0, 2));
@@ -103,6 +130,56 @@ lib.wc.Tests.addTest('substr-test', function(result, cx) {
   result.assertEQ('12345\u4E2D', lib.wc.substr(mixedString, 0, 7));
   result.assertEQ(mixedString, lib.wc.substr(mixedString, 0));
   result.assertEQ(mixedString, lib.wc.substr(mixedString, 0, 20));
+
+  result.assertEQ('123A\u030a456', lib.wc.substr(combiningString, 0, 7));
+  result.assertEQ('123A\u030a', lib.wc.substr(combiningString, 0, 4));
+  result.assertEQ('123', lib.wc.substr(combiningString, 0, 3));
+  result.assertEQ('3A\u030a', lib.wc.substr(combiningString, 2, 2));
+  result.assertEQ('A\u030a4', lib.wc.substr(combiningString, 3, 2));
+  result.assertEQ('A\u030a', lib.wc.substr(combiningString, 3, 1));
+
+  result.assertEQ(leadingCombiningString,
+                  lib.wc.substr(leadingCombiningString, 0));
+
+  result.pass();
+});
+
+lib.wc.Tests.addTest('substr-wide-surrogate-test', function(result, cx) {
+  const string = '12\u{2099d}34';
+
+  // Sanity check this string actually contains a surrogate pair.
+  result.assertEQ(6, string.length);
+
+  result.assertEQ(string, lib.wc.substr(string, 0));
+  result.assertEQ('12', lib.wc.substr(string, 0, 2));
+  result.assertEQ('2', lib.wc.substr(string, 1, 2));
+  result.assertEQ('2\u{D842}\u{DD9D}', lib.wc.substr(string, 1, 3));
+  result.assertEQ('2\u{D842}\u{DD9D}3', lib.wc.substr(string, 1, 4));
+  result.assertEQ('', lib.wc.substr(string, 2, 1));
+  result.assertEQ('\u{D842}\u{DD9D}', lib.wc.substr(string, 2, 2));
+  result.assertEQ('\u{D842}\u{DD9D}3', lib.wc.substr(string, 2, 3));
+  // We don't test column 3 here as it's unclear what the right answer is.
+  // That'll be in the middle of the wide character (column wise).
+  result.assertEQ('3', lib.wc.substr(string, 4, 1));
+  result.assertEQ('34', lib.wc.substr(string, 4));
+
+  result.pass();
+});
+
+lib.wc.Tests.addTest('substr-narrow-surrogate-test', function(result, cx) {
+  const string = '12\u{1f66b}34';
+
+  // Sanity check this string actually contains a surrogate pair.
+  result.assertEQ(6, string.length);
+
+  result.assertEQ(string, lib.wc.substr(string, 0));
+  result.assertEQ('12', lib.wc.substr(string, 0, 2));
+  result.assertEQ('2\u{1f66b}', lib.wc.substr(string, 1, 2));
+  result.assertEQ('2\u{1f66b}3', lib.wc.substr(string, 1, 3));
+  result.assertEQ('\u{1f66b}', lib.wc.substr(string, 2, 1));
+  result.assertEQ('\u{1f66b}3', lib.wc.substr(string, 2, 2));
+  result.assertEQ('3', lib.wc.substr(string, 3, 1));
+  result.assertEQ('34', lib.wc.substr(string, 3));
 
   result.pass();
 });

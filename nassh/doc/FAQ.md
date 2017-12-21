@@ -397,6 +397,23 @@ different app, visit the chrome://settings/handlers page.
   window by hitting alt+enter.
 
 
+### How do I disable omnibox integration?
+
+  When trying to search for "ssh" via the omnibox, it might trigger the app
+  when you actually want to perform a search.  Here are some alternatives:
+
+  * Instead of pressing Ctrl-L to select the omnibox, press Ctrl-K.
+    That'll force a search every time regardless of other omnibox integration.
+  * Prefix your query with an explicit `?` to force a search.
+    i.e. Use `?ssh ...` instead of `ssh ...`.
+
+  If you want to always disable this integration, you can do so in the standard
+  search engine management page.  It'll be at the very bottom under "Search
+  engines added by extensions".
+  See the [Google Chrome Help](https://support.google.com/chrome/answer/95426)
+  page for more details.
+
+
 ### Can I forward ports?
 
   Yes.  Enter your port forwarding options in the "SSH Arguments" field of
@@ -803,11 +820,14 @@ different app, visit the chrome://settings/handlers page.
   between à, á, â, ä, æ, etc...  This is a macOS feature that cannot be disabled
   on a per-application basis.
 
-  If you don't like this behavior, you can disable it globally by opening a
+  If you don't like this behavior, you can disable it in Chrome by opening a
   terminal and running:
 
-    defaults write -g ApplePressAndHoldEnabled -bool false
+    defaults write com.google.Chrome ApplePressAndHoldEnabled -bool false
 
+  Or disable it globally by running:
+
+    defaults write -g ApplePressAndHoldEnabled -bool false
 
 ### Can I rebind keys/shortcuts? {#keybindings}
 
@@ -958,6 +978,51 @@ different app, visit the chrome://settings/handlers page.
   vim, see [osc52.vim].
 
 
+### How do I talk to hterm from inside screen/tmux?
+
+  Since screen/tmux create their own terminals to capture and process output
+  even when you aren't connected, they end up processing all the control
+  sequences and then mangling/passing on only the ones they understand.  That
+  means if you try to use a sequence that only hterm understands, it will get
+  silently swallowed/discarded.  However, these systems usually provide a way
+  to pass thru content directly to the active terminal.
+
+  Under [screen](https://www.gnu.org/software/screen/manual/html_node/Control-Sequences.html),
+  you can use a DCS sequence (ESC+P).  Replace the `...` part with what you want
+  to send (and remember to escape the escapes).
+
+    # A DCS sequence terminated by a ST.
+    $ printf '\033P...\033\\'
+    # Send a notification straight to hterm.
+    $ printf '\033P\033\033]777;notify;title;body\a\033\\'
+
+  Under [tmux](https://github.com/tmux/tmux/blob/master/tools/ansicode.txt),
+  you can use a DCS sequence too, but using the `tmux` subcommand.  Replace
+  the `...` part with what you want to send (and remember to escape the
+  escapes).
+
+    # A DCS sequence terminated by a ST.
+    $ printf '\033Ptmux;...\033\\'
+    # Send a notification straight to hterm.
+    $ printf '\033Ptmux;\033\033]777;notify;title;body\a\033\\'
+
+  There is an [hterm-notify.sh] helper script available as well:
+
+    $ hterm-notify.sh "Some Title" "Lots of text here."
+
+
+### How do I view images?
+
+  We support the iTerm2's OSC 1337 file transfer sequence.  The protocol is a
+  little bit complicated, so there's a [hterm-show-file.sh] helper script for
+  you.  iTerm2's "imgcat" script should also work.
+
+  For more details on the options available, see the
+  [specification](../../hterm/doc/ControlSequences.md#OSC-1337).
+
+
+[hterm-notify.sh]: ../../hterm/etc/hterm-notify.sh
+[hterm-show-file.sh]: ../../hterm/etc/hterm-show-file.sh
 [osc52.el]: ../../hterm/etc/osc52.el
 [osc52.sh]: ../../hterm/etc/osc52.sh
 [osc52.vim]: ../../hterm/etc/osc52.vim

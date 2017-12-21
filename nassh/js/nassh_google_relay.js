@@ -89,23 +89,28 @@ nassh.GoogleRelay.parseOptionString = function(optionString) {
 
   var optionList = optionString.trim().split(/\s+/g);
   for (var i = 0; i < optionList.length; i++) {
-    var option = optionList[i];
-    if (option.substr(0, 1) != '-') {
-      // Bare option overrides --host.
-      rv['--proxy-host'] = option;
+    // Make sure it's a long option first.
+    const option = optionList[i];
+    if (!option.startsWith('--'))
+      throw Error(option);
+
+    // Split apart the option if there is an = in it.
+    let flag, value;
+    const pos = option.indexOf('=');
+    if (pos == -1) {
+      // If there is no = then it's a boolean flag (which --no- disables).
+      value = !option.startsWith('--no-');
+      flag = option.slice(value ? 2 : 5);
     } else {
-      var pos = option.indexOf('=');
-      if (pos != -1) {
-        rv[option.substr(0, pos)] = option.substr(pos + 1);
-      } else {
-        var ary = option.match(/--no-(.*)/);
-        if (ary) {
-          rv['--' + ary[1]] = false;
-        } else {
-          rv[option] = true;
-        }
-      }
+      flag = option.slice(2, pos);
+      value = option.slice(pos + 1);
     }
+
+    // Verify it's an option we support.
+    if (!nassh.GoogleRelay.parseOptionString.validOptions_.includes(flag))
+      throw Error(option);
+
+    rv[`--${flag}`] = value;
   }
 
   if (rv['--config'] == 'google') {
@@ -123,11 +128,31 @@ nassh.GoogleRelay.parseOptionString = function(optionString) {
     if (!('--relay-protocol' in rv))
       rv['--relay-protocol'] = 'v2';
     if (!('--ssh-agent' in rv))
-      rv['--ssh-agent'] = 'beknehfpfkghjoafdifaflglpjkojoco';
+      rv['--ssh-agent'] = nassh.GoogleRelay.defaultGnubbyExtension;
   }
 
   return rv;
 };
+
+/**
+ * All possible flags that may show up in the relay options.
+ * Currently this covers all options even non-Google relay ones.
+ *
+ * Note: Keep this in sync with nassh_connect_dialog.html.
+ */
+nassh.GoogleRelay.parseOptionString.validOptions_ = [
+  'config',
+  'proxy-host',
+  'proxy-port',
+  'relay-prefix-field',
+  'relay-protocol',
+  'report-ack-latency',
+  'report-connect-attempts',
+  'ssh-agent',
+  'ssh-client-version',
+  'use-ssl',
+  'use-xhr',
+];
 
 /**
  * Returns the pattern for the cookie server URL.
@@ -225,6 +250,9 @@ nassh.GoogleRelay.prototype.init = function(opt_resumePath) {
         this.relayServerSocket = lib.f.replaceVars(pattern,
             {host: relayHost, port: relayPort, protocol: protocol});
       }
+
+      // If we made it this far, we're probably not stuck in a redirect loop.
+      sessionStorage.removeItem('googleRelay.redirectCount');
     } else {
       // If everything is ok, this should be the second time we've been asked
       // to do the same init.  (The first time would have redirected.)  If this
@@ -259,3 +287,44 @@ nassh.GoogleRelay.prototype.openSocket = function(fd, host, port, streams,
   return streams.openStream(streamClass,
       fd, {relay: this, host: host, port: port}, onOpen);
 };
+
+/**
+ * Find a usable gnubby extension.
+ */
+nassh.GoogleRelay.findGnubbyExtension = function() {
+  const appId = 'beknehfpfkghjoafdifaflglpjkojoco';
+  const extId = 'lkjlajklkdhaneeelolkfgbpikkgnkpk';
+
+  // Ping the extension to see if it's alive.
+  const check = (id) => new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(id, {'type': 'HELLO'}, (result) => {
+      if (result !== undefined && result['rc'] == 0)
+        resolve(id);
+    });
+  });
+
+  // Pick a default in case neither is installed.
+  nassh.GoogleRelay.defaultGnubbyExtension = extId;
+
+  // We don't care which one is available, so go with the first response.
+  Promise.race([
+    check(appId),
+    check(extId),
+    new Promise((resolve, reject) => setTimeout(resolve, 1000)),
+  ]).then((foundId) => {
+    if (foundId)
+      nassh.GoogleRelay.defaultGnubbyExtension = foundId;
+  });
+};
+
+/**
+ * Register gnubby extension probing.
+ *
+ * This could take time to resolve, so do it as part of start up.
+ * It resolves using promises in the background, so this is OK.
+ */
+lib.registerInit('gnubby probe', function(onInit) {
+  nassh.GoogleRelay.findGnubbyExtension();
+
+  onInit();
+});

@@ -28,4 +28,9 @@ fi
 
 mkdir -p ./dist/zip
 
+export MORE_FILE_PATTERNS_EXCLUDE='
+  .*_tests?\.\(js\|html\)$
+  .*/images/\(promo\|screenshot\)-.*\.\(jpg\|png\)$
+'
+
 mkzip.sh -s "." -w ./dist/zip/ "$@"

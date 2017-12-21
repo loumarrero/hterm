@@ -363,11 +363,13 @@ hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   this.screen_.addEventListener('touchcancel', this.onTouch_.bind(this));
   this.screen_.addEventListener('copy', this.onCopy_.bind(this));
   this.screen_.addEventListener('paste', this.onPaste_.bind(this));
+  this.screen_.addEventListener('drop', this.onDragAndDrop_.bind(this));
 
   doc.body.addEventListener('keydown', this.onBodyKeyDown_.bind(this));
 
   // This is the main container for the fixed rows.
   this.rowNodes_ = doc.createElement('div');
+  this.rowNodes_.id = 'hterm:row-nodes';
   this.rowNodes_.style.cssText = (
       'display: block;' +
       'position: fixed;' +
@@ -390,10 +392,12 @@ hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   // only used to hold rows that are part of the selection but are currently
   // scrolled off the top or bottom of the visible range.
   this.topFold_ = doc.createElement('x-fold');
+  this.topFold_.id = 'hterm:top-fold-for-row-selection';
   this.topFold_.style.cssText = 'display: block;';
   this.rowNodes_.appendChild(this.topFold_);
 
   this.bottomFold_ = this.topFold_.cloneNode();
+  this.bottomFold_.id = 'hterm:bottom-fold-for-row-selection';
   this.rowNodes_.appendChild(this.bottomFold_);
 
   // This hidden div accounts for the vertical space that would be consumed by
@@ -406,6 +410,7 @@ hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   // select and scroll at the same time).  Without this, the selection gets
   // out of whack.
   this.scrollArea_ = doc.createElement('div');
+  this.scrollArea_.id = 'hterm:scrollarea';
   this.scrollArea_.style.cssText = 'visibility: hidden';
   this.screen_.appendChild(this.scrollArea_);
 
@@ -416,6 +421,7 @@ hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   // Note: This must be http:// else Chrome cannot create the element correctly.
   var xmlns = 'http://www.w3.org/2000/svg';
   this.svg_ = this.div_.ownerDocument.createElementNS(xmlns, 'svg');
+  this.svg_.id = 'hterm:zoom-detector';
   this.svg_.setAttribute('xmlns', xmlns);
   this.svg_.setAttribute('version', '1.1');
   this.svg_.style.cssText = (
@@ -428,7 +434,7 @@ hterm.ScrollPort.prototype.decorate = function(div,iframe) {
   // We send focus to this element just before a paste happens, so we can
   // capture the pasted text and forward it on to someone who cares.
   this.pasteTarget_ = doc.createElement('textarea');
-  this.pasteTarget_.id = 'ctrl-v-paste-target';
+  this.pasteTarget_.id = 'hterm:ctrl-v-paste-target';
   this.pasteTarget_.setAttribute('tabindex', '-1');
   this.pasteTarget_.style.cssText = (
     'position: absolute;' +
@@ -661,6 +667,7 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(opt_weight) {
 
   if (!this.ruler_) {
     this.ruler_ = this.document_.createElement('div');
+    this.ruler_.id = 'hterm:ruler-character-size';
     this.ruler_.style.cssText = (
         'position: absolute;' +
         'top: 0;' +
@@ -672,11 +679,13 @@ hterm.ScrollPort.prototype.measureCharacterSize = function(opt_weight) {
     // We need to put the text in a span to make the size calculation
     // work properly in Firefox
     this.rulerSpan_ = this.document_.createElement('span');
+    this.rulerSpan_.id = 'hterm:ruler-span-workaround';
     this.rulerSpan_.innerHTML =
         ('X'.repeat(lineLength) + '\r').repeat(numberOfLines);
     this.ruler_.appendChild(this.rulerSpan_);
 
     this.rulerBaseline_ = this.document_.createElement('span');
+    this.rulerSpan_.id = 'hterm:ruler-baseline';
     // We want to collapse it on the baseline
     this.rulerBaseline_.style.fontSize = '0px';
     this.rulerBaseline_.textContent = 'X';
@@ -1401,7 +1410,6 @@ hterm.ScrollPort.prototype.onTouch_ = function(e) {
 hterm.ScrollPort.prototype.onResize_ = function(e) {
   // Re-measure, since onResize also happens for browser zoom changes.
   this.syncCharacterSize();
-  this.resize();
 };
 
 /**
@@ -1490,6 +1498,8 @@ hterm.ScrollPort.prototype.onBodyKeyDown_ = function(e) {
 
 /**
  * Handle a paste event on the the ScrollPort's screen element.
+ *
+ * TODO: Handle ClipboardData.files transfers.  https://crbug.com/433581.
  */
 hterm.ScrollPort.prototype.onPaste_ = function(e) {
   this.pasteTarget_.focus();
@@ -1508,6 +1518,43 @@ hterm.ScrollPort.prototype.onPaste_ = function(e) {
  */
 hterm.ScrollPort.prototype.handlePasteTargetTextInput_ = function(e) {
   e.stopPropagation();
+};
+
+/**
+ * Handle a drop event on the the ScrollPort's screen element.
+ *
+ * By default we try to copy in the structured format (HTML/whatever).
+ * The shift key can select plain text though.
+ *
+ * TODO: Handle DataTransfer.files transfers.  https://crbug.com/433581.
+ *
+ * @param {DragEvent} e The drag event that fired us.
+ */
+hterm.ScrollPort.prototype.onDragAndDrop_ = function(e) {
+  e.preventDefault();
+
+  let data;
+  let format;
+
+  // If the shift key active, try to find a "rich" text source (but not plain
+  // text).  e.g. text/html is OK.
+  if (e.shiftKey) {
+    e.dataTransfer.types.forEach((t) => {
+      if (!format && t != 'text/plain' && t.startsWith('text/'))
+        format = t;
+    });
+
+    // If we found a non-plain text source, try it out first.
+    if (format)
+      data = e.dataTransfer.getData(format);
+  }
+
+  // If we haven't loaded anything useful, fall back to plain text.
+  if (!data)
+    data = e.dataTransfer.getData('text/plain');
+
+  if (data)
+    this.publish('paste', {text: data});
 };
 
 /**

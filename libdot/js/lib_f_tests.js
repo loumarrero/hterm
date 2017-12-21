@@ -33,10 +33,14 @@ lib.f.Tests.addTest('replaceVars', function(result, cx) {
 
 lib.f.Tests.addTest('parseQuery', function(result, cx) {
   // Can't use assertEQ directly because JS can't compare objects easily.
-  var ret = lib.f.parseQuery('var=value&foo=blah&cow=milky');
+  var ret = lib.f.parseQuery('var=value&foo=blah&cow=milky&clob=a&clob=b&' +
+                             'arr[]=1&arr[]=2&clobarr=x&clobarr[]=3');
   result.assertEQ(ret['var'], 'value');
   result.assertEQ(ret['foo'], 'blah');
   result.assertEQ(ret['cow'], 'milky');
+  result.assertEQ(ret['clob'], 'b');
+  result.assertEQ(ret['arr'], ['1', '2']);
+  result.assertEQ(ret['clobarr'], ['3']);
   result.pass();
 });
 
@@ -77,5 +81,49 @@ lib.f.Tests.addTest('getWhitespace', function(result, cx) {
   // Edge cases!
   result.assertEQ(lib.f.getWhitespace(-10), '');
 
+  result.pass();
+});
+
+lib.f.Tests.addTest('randomInt', function(result, cx) {
+  // How many extra samples to grab.  It's random, so hope for the best.
+  var maxSamples = 1000;
+  var i, ret;
+  var seen = [];
+  var min = 0;
+  var max = 10;
+
+  for (i = 0; i < maxSamples; ++i) {
+    ret = lib.f.randomInt(min, max);
+    result.assertEQ(true, (ret >= min && ret <= max));
+    seen[ret] = 1;
+  }
+
+  result.assertEQ((max - min + 1), seen.reduce((sum, value) => sum + value));
+
+  result.pass();
+});
+
+/**
+ * Simple smoke test.  Relies on a lot on current runtime as we don't mock
+ * out all the runtime APIs that this code uses.
+ */
+lib.f.Tests.addTest('getOs', function(result, cx) {
+  lib.f.getOs().then((os) => {
+    result.assert(os.length > 0);
+    result.pass();
+  });
+
+  result.requestTime(200);
+});
+
+/**
+ * Simple smoke test.
+ */
+lib.f.Tests.addTest('getChromeMilestone', function(result, cx) {
+  const milestone = lib.f.getChromeMilestone();
+  if (window.chrome)
+    result.assert(milestone > 30);
+  else
+    result.assert(isNaN(milestone));
   result.pass();
 });

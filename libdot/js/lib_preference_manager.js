@@ -181,8 +181,7 @@ lib.PreferenceManager.prototype.readStorage = function(opt_callback) {
       opt_callback();
   }
 
-  var keys = Object.keys(this.prefRecords_).map(
-      function(el) { return this.prefix + el }.bind(this));
+  var keys = Object.keys(this.prefRecords_).map((el) => this.prefix + el);
 
   if (this.trace)
     console.log('Preferences read: ' + this.prefix);
@@ -366,7 +365,7 @@ lib.PreferenceManager.prototype.createChild = function(listName, opt_hint,
   } else {
     // Pick a random, unique 4-digit hex identifier for the new profile.
     while (!id || ids.indexOf(id) != -1) {
-      id = Math.floor(Math.random() * 0xffff + 1).toString(16);
+      id = lib.f.randomInt(1, 0xffff).toString(16);
       id = lib.f.zpad(id, 4);
       if (opt_hint)
         id = opt_hint + ':' + id;
@@ -739,7 +738,13 @@ lib.PreferenceManager.prototype.exportAsJson = function() {
  *
  * This will create nested preference managers as well.
  */
-lib.PreferenceManager.prototype.importFromJson = function(json) {
+lib.PreferenceManager.prototype.importFromJson = function(json, opt_onComplete) {
+  let pendingWrites = 0;
+  const onWriteStorage = () => {
+    if (--pendingWrites < 1 && opt_onComplete)
+      opt_onComplete();
+  };
+
   for (var name in json) {
     if (name in this.childLists_) {
       var childList = json[name];
@@ -750,13 +755,20 @@ lib.PreferenceManager.prototype.importFromJson = function(json) {
         if (!childPrefManager)
           childPrefManager = this.createChild(name, null, id);
 
-        childPrefManager.importFromJson(childList[i].json);
+        childPrefManager.importFromJson(childList[i].json, onWriteStorage);
+        pendingWrites++;
       }
 
     } else {
+      // The set is synchronous.
       this.set(name, json[name]);
     }
   }
+
+  // If we didn't update any children, no async work has been queued, so make
+  // the completion callback directly.
+  if (pendingWrites == 0 && opt_onComplete)
+    opt_onComplete();
 };
 
 /**

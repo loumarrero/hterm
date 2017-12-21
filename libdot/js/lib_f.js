@@ -19,6 +19,7 @@ lib.f = {};
 lib.f.createEnum = function(name) {
   // We use a String object as nothing else should be using them -- we want to
   // use string primitives normally.  But debuggers will include our name.
+  // eslint-disable-next-line no-new-wrappers
   return new String(name);
 };
 
@@ -69,7 +70,7 @@ lib.f.replaceVars.functions = {
       "'": '&#39;'
     };
 
-    return str.replace(/[<>&\"\']/g, function(m) { return map[m] });
+    return str.replace(/[<>&\"\']/g, (m) => map[m]);
   }
 };
 
@@ -99,7 +100,8 @@ lib.f.getAcceptLanguages.chromeSupported = function() {
  * This takes a url query string in the form 'name1=value&name2=value' and
  * converts it into an object of the form { name1: 'value', name2: 'value' }.
  * If a given name appears multiple times in the query string, only the
- * last value will appear in the result.
+ * last value will appear in the result.  If the name ends with [], it is
+ * turned into an array.
  *
  * Names and values are passed through decodeURIComponent before being added
  * to the result object.
@@ -116,7 +118,20 @@ lib.f.parseQuery = function(queryString) {
   var pairs = queryString.split('&');
   for (var i = 0; i < pairs.length; i++) {
     var pair = pairs[i].split('=');
-    rv[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1]);
+    let key = decodeURIComponent(pair[0]);
+    let val = decodeURIComponent(pair[1]);
+
+    if (key.endsWith('[]')) {
+      // It's an array.
+      key = key.slice(0, -2);
+      // The key doesn't exist, or wasn't an array before.
+      if (!(rv[key] instanceof Array))
+        rv[key] = [];
+      rv[key].push(val);
+    } else {
+      // It's a plain string.
+      rv[key] = val;
+    }
   }
 
   return rv;
@@ -239,7 +254,7 @@ lib.f.alarm = function(callback, opt_ms) {
         }
 
         return callback.apply(null, arguments);
-      }
+      };
     };
 
     if (typeof callback == 'string')
@@ -305,4 +320,68 @@ lib.f.smartFloorDivide = function(numerator,  denominator) {
   } else {
     return Math.floor(val);
   }
+};
+
+/**
+ * Get a random integer in a range (inclusive).
+ *
+ * @param {number} min The lowest integer in the range.
+ * @param {number} max The highest integer in the range.
+ * @return {number} A random number between min & max.
+ */
+lib.f.randomInt = function(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
+/**
+ * Get the current OS.
+ *
+ * @return {Promise<string>} A promise that resolves to a constant in
+ *     runtime.PlatformOs.
+ */
+lib.f.getOs = function() {
+  // Try the brower extensions API.
+  if (window.browser && browser.runtime && browser.runtime.getPlatformInfo)
+    return browser.runtime.getPlatformInfo().then((info) => info.os);
+
+  // Use the native Chrome API if available.
+  if (window.chrome && chrome.runtime && chrome.runtime.getPlatformInfo) {
+    return new Promise((resolve, reject) =>
+        chrome.runtime.getPlatformInfo((info) => resolve(info.os)));
+  }
+
+  // Fallback logic.  Capture the major OS's.  The rest should support the
+  // browser API above.
+  if (window.navigator && navigator.userAgent) {
+    const ua = navigator.userAgent;
+    if (ua.includes('Mac OS X'))
+      return Promise.resolve('mac');
+    else if (ua.includes('CrOS'))
+      return Promise.resolve('cros');
+    else if (ua.includes('Linux'))
+      return Promise.resolve('linux');
+    else if (ua.includes('Android'))
+      return Promise.resolve('android');
+    else if (ua.includes('Windows'))
+      return Promise.resolve('windows');
+  }
+
+  // Still here?  No idea.
+  return Promise.reject(null);
+};
+
+/**
+ * Get the current Chrome milestone version.
+ *
+ * @return {number} The milestone number if we're running on Chrome, else NaN.
+ */
+lib.f.getChromeMilestone = function() {
+  if (window.navigator && navigator.userAgent) {
+    const ary = navigator.userAgent.match(/\sChrome\/(\d+)/);
+    if (ary)
+      return parseInt(ary[1]);
+  }
+
+  // Returning NaN will make all number comparisons fail.
+  return NaN;
 };

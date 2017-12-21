@@ -40,6 +40,7 @@ const char kEnvironmentAttr[] = "environment";
 const char kArgumentsAttr[] = "arguments";
 const char kWriteWindowAttr[] = "writeWindow";
 const char kAuthAgentAppID[] = "authAgentAppID";
+const char kSubsystemAttr[] = "subsystem";
 
 // These are JavaScript method names as C++ code sees them.
 const char kPrintLogMethodId[] = "printLog";
@@ -52,7 +53,7 @@ const char kCloseMethodId[] = "close";
 
 const size_t kDefaultWriteWindow = 64 * 1024;
 
-extern "C" int ssh_main(int ac, const char** av);
+extern "C" int ssh_main(int ac, const char** av, const char *subsystem);
 
 //------------------------------------------------------------------------------
 
@@ -217,9 +218,6 @@ void SshPluginInstance::SessionThreadImpl() {
   std::vector<const char*> argv;
   // argv[0]
   argv.push_back("ssh");
-#ifdef DEBUG
-  argv.push_back("-vvv");
-#endif
   if (session_args_.isMember(kArgumentsAttr) &&
       session_args_[kArgumentsAttr].isArray()) {
     const Json::Value& args = session_args_[kArgumentsAttr];
@@ -247,11 +245,18 @@ void SshPluginInstance::SessionThreadImpl() {
     argv.push_back(username_hostname.c_str());
   }
 
+  std::string subsystem;
+  const char *csubsystem = NULL;
+  if (session_args_.isMember(kSubsystemAttr)) {
+    subsystem = session_args_[kSubsystemAttr].asString();
+    csubsystem = subsystem.c_str();
+  }
+
   LOG("ssh main args:\n");
   for (size_t i = 0; i < argv.size(); i++)
     LOG("  argv[%d] = %s\n", i, argv[i]);
 
-  SendExitCode(ssh_main(argv.size(), &argv[0]));
+  SendExitCode(ssh_main(argv.size(), &argv[0], csubsystem));
 }
 
 void* SshPluginInstance::SessionThread(void* arg) {

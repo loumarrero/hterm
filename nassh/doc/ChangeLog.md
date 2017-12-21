@@ -1,3 +1,100 @@
+# 0.8.41, 2017-12-13, Features & fixes galore.
+
+* Update to libdot 1.20.  Features & fixes.
+* Update to hterm 1.76.  Standards/compatibility fixes & OSC-8 links & OSC-1337 image features.
+* Refactor and reformat before adding PIV.
+* Set base path for SFTP RENAME and SETSTAT packets.
+* support multiple gnubby extensions.
+* crosh: finish localizing messages.
+* crosh: set default background color to black.
+* FAQ: extend the macOS auto-repeat entry.
+* support translating all the hterm preferences.
+* add a lib.f.getOs helper.
+* mark sftp mounts as non-persistent across logouts.
+* include all profiles all the time when backing up.
+
+# 0.8.40.1, 2017-11-20, Multiple plugin support.
+
+* Add option to select different ssh client plugin versions.
+
+# 0.8.40, 2017-11-20, Pull in hterm fixes.
+
+* Update to hterm 1.75.  Many color/style/mouse fixes & features.
+* Use chrome.runtime.openOptionsPage helper.
+
+# 0.8.39, 2017-10-27, OpenSSH upgrade.
+
+* Update to hterm 1.74.  Minor improvements.
+* Upgrade to OpenSSH 7.6p1.
+* Update mdocml to latest release.
+* Fix /dev/null pseudo file reads.
+* Update relay options if the hostname changes.
+* Rewrite translations in pure UTF-8.
+* Update translation help text.
+* Update translations.
+* Fix newline handling in translations.
+
+# 0.8.38, 2017-10-16, Bugfixes galore.
+
+* Update to libdot 1.19.  Bug fixes.
+* Update to hterm 1.73.  Various bugfixes and minor features.
+* crosh: Fix pasting Unicode content.
+* Fix base64url encoding translation with relays.
+* Display relay error messages to the user.
+* Detect relay loops.
+* agent: Print SSH public key blobs to the console.
+* Add a guide for setting up smart card backed ssh keys.
+* agent: Improve TLV handling with smart cards.
+* agent: Take OpenPGP card capabilities into account.
+* agent: Add short names for Gemalto readers.
+* Validate relay options.
+* Ignore common browser shortcuts in connection dialog.
+* omnibox: Allow matching saved profile names.
+
+# 0.8.37, 2017-09-12, Unicode updates and ssh-agent frameworks.
+
+* Update to libdot 1.18.  Unicode 10.0.0 updates (from Unicode 5).
+* Update to hterm 1.72.  Misc bugfixes.
+* Implement an extensible SSH agent (stub backend).
+* Integrate Google Smart Card Connector client.
+* Add an agent backend for smart card keys.
+* Also set relay page to black background.
+* Fail gracefully when loading an unknown profile.
+* Fix argstr parsing when connecting via URIs.
+* Fix opening a new window from the omnibox.
+* Use lib.f.getStack helper in more places.
+
+# 0.8.36.12, 2017-09-01, Bugfixes galore.
+
+* Update to libdot 1.17.  Better handling for Unicode combining characters.
+* Update to hterm 1.71.  Better handling for Unicode combining characters.
+* Improve startup display to not flash so much white.
+* Promote some array helpers to new lib.array API.
+* Promote binary<->base64 helpers for all stream classes.
+* Refactor Stream.asyncRead API to unify duplicate implementations.
+
+# 0.8.36.11, 2017-08-16, Improve Unicode handling.
+
+* Update to libdot 1.16.  Better handling for Unicode combining characters.
+* Update to hterm 1.70.  Better handling for Unicode combining characters.
+* Use new lib.f.randomInt helper.
+* Fix helper scripts/docs to use POSIX portable \033 instead of \e with printf.
+* Support basic quoting rules with ssh command line.
+* Add random feature tips to startup screen.
+
+# 0.8.36.10, 2017-08-08, Minor improvements.
+
+* Update to hterm 1.69.  Improve cursor tracking and add pref for default
+  encoding.
+* Rework user ssh command line processing.
+
+# 0.8.36.9, 2017-07-26, New feature polish.
+
+* Update to hterm 1.68.  Various fixes for new features, and make accidental
+  character map transitions more robust.
+* Shrink & shift connection dialog to not take up so much space.
+* Rework passing of subsystem down to the OpenSSH NaCl.
+
 # 0.8.36.8, 2017-07-19, New feature polish.
 
 * Fix identity dropdown list display.

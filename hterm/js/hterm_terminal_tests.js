@@ -218,3 +218,262 @@ hterm.Terminal.Tests.addTest('desktop-notification-bell-test',
 
     result.pass();
   });
+
+/**
+ * Test that focus sequences are passed as expected when focus reporting is
+ * turned on, and nothing is passed when reporting is off.
+ */
+hterm.Terminal.Tests.addTest('focus-reporting', function(result, cx) {
+  var resultString = '';
+  this.terminal.io.sendString = function(str) { resultString = str };
+
+  this.terminal.interpret('\x1b[?1004h');
+
+  this.terminal.onFocusChange_(false);
+  result.assertEQ(resultString, '\x1b[O')
+  this.terminal.onFocusChange_(true);
+  result.assertEQ(resultString, '\x1b[I')
+
+  resultString = '';
+  this.terminal.interpret('\x1b[?1004l');
+
+  this.terminal.onFocusChange_(false);
+  result.assertEQ(resultString, '')
+  this.terminal.onFocusChange_(true);
+  result.assertEQ(resultString, '')
+
+  result.pass();
+});
+
+/**
+ * Verify saved cursors have per-screen state.
+ */
+hterm.Terminal.Tests.addTest('per-screen-cursor-state', function(result, cx) {
+  const terminal = this.terminal;
+  const vt = terminal.vt;
+
+  // Start with the primary screen.
+  terminal.setAlternateMode(false);
+  // This should be the default cursor state.
+  terminal.restoreCursorAndState();
+  result.assertEQ(0, terminal.getCursorRow());
+  result.assertEQ(0, terminal.getCursorColumn());
+  result.assertEQ('G0', vt.GL);
+  result.assertEQ('G0', vt.GR);
+  // Change the primary cursor a bit and save it.
+  vt.GL = 'G1';
+  vt.GR = 'G2';
+  terminal.setAbsoluteCursorPosition(3, 4);
+  result.assertEQ(3, terminal.getCursorRow());
+  result.assertEQ(4, terminal.getCursorColumn());
+  terminal.saveCursorAndState();
+
+  // Switch to the alternative screen.
+  terminal.setAlternateMode(true);
+  // Cursor state should not be changed.
+  result.assertEQ(3, terminal.getCursorRow());
+  result.assertEQ(4, terminal.getCursorColumn());
+  result.assertEQ('G1', vt.GL);
+  result.assertEQ('G2', vt.GR);
+  // This should be the default cursor state.
+  terminal.restoreCursorAndState();
+  result.assertEQ(0, terminal.getCursorRow());
+  result.assertEQ(0, terminal.getCursorColumn());
+  result.assertEQ('G0', vt.GL);
+  result.assertEQ('G0', vt.GR);
+  // Change the alternate cursor a bit and save it.
+  vt.GL = 'G2';
+  vt.GR = 'G3';
+  terminal.setAbsoluteCursorPosition(7, 8);
+  result.assertEQ(7, terminal.getCursorRow());
+  result.assertEQ(8, terminal.getCursorColumn());
+  terminal.saveCursorAndState();
+
+  // Switch back to the primary scren.
+  terminal.setAlternateMode(false);
+  // Cursor state should not be changed.
+  result.assertEQ(7, terminal.getCursorRow());
+  result.assertEQ(8, terminal.getCursorColumn());
+  result.assertEQ('G2', vt.GL);
+  result.assertEQ('G3', vt.GR);
+  // This should be the primary cursor state we set up earlier.
+  terminal.restoreCursorAndState();
+  result.assertEQ(3, terminal.getCursorRow());
+  result.assertEQ(4, terminal.getCursorColumn());
+  result.assertEQ('G1', vt.GL);
+  result.assertEQ('G2', vt.GR);
+
+  // Finally back to the alternate scren.
+  terminal.setAlternateMode(true);
+  // Cursor state should not be changed.
+  result.assertEQ(3, terminal.getCursorRow());
+  result.assertEQ(4, terminal.getCursorColumn());
+  result.assertEQ('G1', vt.GL);
+  result.assertEQ('G2', vt.GR);
+  // This should be the alternate cursor state we set up earlier.
+  terminal.restoreCursorAndState();
+  result.assertEQ(7, terminal.getCursorRow());
+  result.assertEQ(8, terminal.getCursorColumn());
+  result.assertEQ('G2', vt.GL);
+  result.assertEQ('G3', vt.GR);
+
+  result.pass();
+});
+
+/**
+ * Check image display handling when disabled.
+ */
+hterm.Terminal.Tests.addTest('display-img-disabled', function(result, cx) {
+  this.terminal.allowImagesInline = false;
+
+  this.terminal.displayImage({uri: ''});
+  const text = this.terminal.getRowsText(0, 1);
+  result.assertEQ('Inline Images Disabled', text);
+
+  result.pass();
+});
+
+/**
+ * Check image display handling when not yet decided.
+ */
+hterm.Terminal.Tests.addTest('display-img-prompt', function(result, cx) {
+  this.terminal.allowImagesInline = null;
+
+  // Search for the block & allow buttons.
+  this.terminal.displayImage({uri: ''});
+  const text = this.terminal.getRowsText(0, 1);
+  result.assert(text.includes('block'));
+  result.assert(text.includes('allow'));
+
+  result.pass();
+});
+
+/**
+ * Check simple image display handling.
+ */
+hterm.Terminal.Tests.addTest('display-img-normal', function(result, cx) {
+  this.terminal.allowImagesInline = true;
+
+  // This is a 16px x 8px gif.
+  const data = 'R0lGODdhCAAQAIAAAP///wAAACwAAAAACAAQAAACFkSAhpfMC1uMT1mabHWZy6t1U/htQAEAOw==';
+
+  // Display an image that only takes up one row.
+  this.terminal.displayImage({
+    height: '2px',
+    inline: true,
+    align: 'center',
+    uri: `data:application/octet-stream;base64,${data}`,
+  });
+
+  // Hopefully 100msecs is enough time for Chrome to load the image.
+  setTimeout(() => {
+    result.assertEQ(1, this.terminal.getCursorRow());
+    const row = this.terminal.getRowNode(0);
+    const container = row.childNodes[1];
+    const img = container.childNodes[0];
+
+    result.assertEQ('center', container.style.textAlign);
+    result.assertEQ(2, img.clientHeight);
+
+    result.pass();
+  }, 100);
+
+  result.requestTime(200);
+});
+
+/**
+ * Check handling of image dimensions.
+ */
+hterm.Terminal.Tests.addTest('display-img-dimensions', function(result, cx) {
+  this.terminal.allowImagesInline = true;
+
+  // This is a 16px x 8px gif.
+  const data = 'R0lGODdhCAAQAIAAAP///wAAACwAAAAACAAQAAACFkSAhpfMC1uMT1mabHWZy6t1U/htQAEAOw==';
+
+  // Display an image that only takes up one row.
+  this.terminal.displayImage({
+    height: '4',
+    width: '75%',
+    inline: true,
+    uri: `data:application/octet-stream;base64,${data}`,
+  });
+
+  // Hopefully 100msecs is enough time for Chrome to load the image.
+  setTimeout(() => {
+    result.assertEQ(4, this.terminal.getCursorRow());
+    const row = this.terminal.getRowNode(3);
+    const container = row.childNodes[1];
+    const img = container.childNodes[0];
+
+    // The image should be 4 rows tall.
+    result.assert(img.clientHeight ==
+                  this.terminal.scrollPort_.characterSize.height * 4);
+
+    // Do a range check for the percentage width.
+    const bodyWidth = this.terminal.document_.body.clientWidth;
+    result.assert(img.clientWidth > bodyWidth * 0.70);
+    result.assert(img.clientWidth < bodyWidth * 0.80);
+
+    result.pass();
+  }, 100);
+
+  result.requestTime(200);
+});
+
+/**
+ * Check handling of max image dimensions.
+ */
+hterm.Terminal.Tests.addTest('display-img-max-dimensions', function(result, cx) {
+  this.terminal.allowImagesInline = true;
+
+  // This is a 16px x 8px gif.
+  const data = 'R0lGODdhCAAQAIAAAP///wAAACwAAAAACAAQAAACFkSAhpfMC1uMT1mabHWZy6t1U/htQAEAOw==';
+
+  // Display an image that only takes up one row.
+  this.terminal.displayImage({
+    height: '4000px',
+    width: '1000',
+    inline: true,
+    uri: `data:application/octet-stream;base64,${data}`,
+  });
+
+  // Hopefully 100msecs is enough time for Chrome to load the image.
+  setTimeout(() => {
+    const rowNum = this.terminal.screen_.getHeight() - 1;
+    result.assertEQ(rowNum, this.terminal.getCursorRow());
+    const row = this.terminal.getRowNode(rowNum);
+    const container = row.childNodes[1];
+    const img = container.childNodes[0];
+
+    // The image should take up the whole screen, but not more.
+    const body = this.terminal.document_.body;
+    result.assertEQ(img.clientHeight, body.clientHeight);
+    result.assertEQ(img.clientWidth, body.clientWidth);
+
+    result.pass();
+  }, 100);
+
+  result.requestTime(200);
+});
+
+/**
+ * Check loading of invalid images doesn't wedge the terminal.
+ */
+hterm.Terminal.Tests.addTest('display-img-invalid', function(result, cx) {
+  this.terminal.allowImagesInline = true;
+
+  // The data is invalid image content.
+  this.terminal.displayImage({
+    inline: true,
+    uri: 'data:application/octet-stream;base64,asdf',
+  });
+
+  // Hopefully 100msecs is enough time for Chrome to load the image.
+  setTimeout(() => {
+    // The cursor should not have advanced.
+    result.assertEQ(0, this.terminal.getCursorRow());
+    result.pass();
+  }, 100);
+
+  result.requestTime(200);
+});

@@ -1,12 +1,12 @@
 {
 	"already_mounted_message": {
-		"message": "Failis\u00fcsteem on juba \u00fchendatud."
+		"message": "Failisüsteem on juba ühendatud."
 	},
 	"backup_prefs": {
 		"message": "Varukoopia salvestamine"
 	},
 	"bad_destination": {
-		"message": "Sihtkohta ei \u00f5nnestunud s\u00f5eluda: $1",
+		"message": "Sihtkohta ei õnnestunud sõeluda: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -14,25 +14,25 @@
 		}
 	},
 	"before_unload": {
-		"message": "Vahelehe sulgemine l\u00f5petab seansi."
+		"message": "Vahelehe sulgemine lõpetab seansi."
 	},
 	"cancel_button_label": {
-		"message": "T\u00fchista"
+		"message": "Tühista"
 	},
 	"cmd_ssh_forget_host_help": {
-		"message": "See k\u00e4sk kuvab teadaolevate hostide men\u00fc\u00fc ja edastab hostile unustamisk\u00e4su."
+		"message": "See käsk kuvab teadaolevate hostide menüü ja edastab hostile unustamiskäsu."
 	},
 	"cmd_ssh_forget_host_title": {
 		"message": "Teadaolev SSH-hosti unustamine."
 	},
 	"cmd_ssh_help": {
-		"message": "Parameetrid |username| ja |hostname| on kohustuslikud, |port| on valikuline. Kui j\u00e4tate pordi m\u00e4\u00e4ramata, siis kasutatakse vaikev\u00e4\u00e4rtust 22."
+		"message": "Parameetrid |username| ja |hostname| on kohustuslikud, |port| on valikuline. Kui jätate pordi määramata, siis kasutatakse vaikeväärtust 22."
 	},
 	"cmd_ssh_title": {
 		"message": "Avab uue SSH-seansi."
 	},
 	"command_complete": {
-		"message": "K\u00e4sust $1 v\u00e4ljuti olekukoodiga $2.",
+		"message": "Käsust $1 väljuti olekukoodiga $2.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -43,13 +43,32 @@
 		}
 	},
 	"connect_button_label": {
-		"message": "\u00dchenda"
+		"message": "Ühenda"
 	},
 	"connect_or_exit_message": {
-		"message": "Kas valida teine \u00fchendus (C) v\u00f5i v\u00e4ljuda (X)?"
+		"message": "Kas valida teine ühendus (C) või väljuda (X)?"
 	},
 	"connecting": {
-		"message": "Sihtkohaga $1 \u00fchendamine \u2026",
+		"message": "Sihtkohaga $1 ühendamine …",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"console_crosh_options_notice": {
+		"message": "Kas teadsite, et olemas on ka spetsiaalne valikute leht?\nEnam ei pea tegelema reegliga term_ directly!\nSelle avamiseks vajutage klahvikombinatsiooni $1 või klõpsake URL-il\n$2",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
+			}
+		}
+	},
+	"console_nassh_options_notice": {
+		"message": "Kas teadsite, et olemas on ka spetsiaalne valikute leht?\nEnam ei pea tegelema reegliga term_ directly!\n$1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -63,7 +82,7 @@
 		"message": "Kustuta"
 	},
 	"disconnect_message": {
-		"message": "Pistikprogrammist NaCl v\u00e4ljuti olekukoodiga $1.",
+		"message": "Pistikprogrammist NaCl väljuti olekukoodiga $1.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -73,17 +92,14 @@
 	"enter_keycap": {
 		"message": "[ENTER]"
 	},
-	"field_argstr_aria_label": {
-		"message": "ssh lisaargumendid"
-	},
 	"field_argstr_placeholder": {
-		"message": "k\u00e4surea lisaargumendid"
+		"message": "käsurea lisaargumendid"
 	},
 	"field_description_aria_label": {
 		"message": "kirjeldus"
 	},
 	"field_description_placeholder": {
-		"message": "kasutajanimi@hostinimi v\u00f5i vabas vormis tekst"
+		"message": "kasutajanimi@hostinimi või vabas vormis tekst"
 	},
 	"field_hostname_aria_label": {
 		"message": "hostinimi"
@@ -91,8 +107,8 @@
 	"field_hostname_placeholder": {
 		"message": "hostinimi"
 	},
-	"field_identity_aria_label": {
-		"message": "identiteet"
+	"field_mount_path_placeholder": {
+		"message": "vaiketee on kasutaja juurkataloog"
 	},
 	"field_port_aria_label": {
 		"message": "port"
@@ -104,10 +120,7 @@
 		"message": "relee valikud"
 	},
 	"field_relay_options_placeholder": {
-		"message": "relee valikud"
-	},
-	"field_terminal_profile_aria_label": {
-		"message": "terminali profiili nimi"
+		"message": "SSH-releeserveri valikud"
 	},
 	"field_terminal_profile_placeholder": {
 		"message": "vaikeprofiil"
@@ -133,7 +146,7 @@
 		"message": "faili importimine"
 	},
 	"import_link_label": {
-		"message": "Importimine \u2026"
+		"message": "Importimine …"
 	},
 	"initializing_relay": {
 		"message": "Otsitakse releeserverit, kasutades hosti $1",
@@ -144,10 +157,13 @@
 		}
 	},
 	"json_parse_error": {
-		"message": "K\u00e4sku JSON asukohas \u201e$1\u201d ei saanud s\u00f5eluda",
+		"message": "Käsku JSON asukohas „$1” ei saanud sõeluda: $2",
 		"placeholders": {
 			"1": {
 				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
 			}
 		}
 	},
@@ -155,7 +171,7 @@
 		"message": "Ei saa unustada, kuna teadaolevaid hoste ei ole."
 	},
 	"known_hosts_prompt": {
-		"message": "Valige host, mida unustada [1\u2013$1]:",
+		"message": "Valige host, mida unustada [1–$1]:",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -166,7 +182,7 @@
 		"message": "Teadaolevad hostid:"
 	},
 	"loading_label": {
-		"message": "Laadimine \u2026"
+		"message": "Laadimine …"
 	},
 	"missing_param": {
 		"message": "Puuduv parameeter: $1",
@@ -177,10 +193,13 @@
 		}
 	},
 	"mount_button_label": {
-		"message": "\u00dchenda SFTP"
+		"message": "Ühenda SFTP"
+	},
+	"mount_path_label": {
+		"message": "Tee loomine"
 	},
 	"mounted_message": {
-		"message": "\u00dchendatud."
+		"message": "Ühendatud."
 	},
 	"notify_copy": {
 		"message": "Valik kopeeriti"
@@ -188,8 +207,11 @@
 	"ok_button_label": {
 		"message": "OK"
 	},
+	"omnibox_default": {
+		"message": "<url><match>user@hostname[:port]</match></url> Looge ühendus salvestatud profiiliga või uue SSH-süsteemiga"
+	},
 	"open_as_window_tip": {
-		"message": "[Professionaali n\u00f5uanne.] Kasutage k\u00e4sku \u201eAva aknana\u201d, et klahvikombinatsioon Juhtklahv + W terminali ei sulgeks.\n[Professionaali n\u00f5uanne.] Lisateavet leiate saidilt $1.",
+		"message": "[Professionaali nõuanne.] Kasutage käsku „Ava aknana”, et klahvikombinatsioon Juhtklahv + W terminali ei sulgeks.\n[Professionaali nõuanne.] Lisateavet leiate saidilt $1.",
 		"placeholders": {
 			"1": {
 				"content": "$1"
@@ -205,6 +227,9 @@
 	"plugin_loading_complete": {
 		"message": " valmis."
 	},
+	"plugin_loading_failed": {
+		"message": " ebaõnnestus! :("
+	},
 	"pref_backup_filename": {
 		"message": "Secure Shell Preferences Backup.json"
 	},
@@ -212,19 +237,19 @@
 		"message": "Profiili seaded"
 	},
 	"preferences_reset": {
-		"message": "K\u00f5ik eelistused l\u00e4htestati."
+		"message": "Kõik eelistused lähtestati."
 	},
 	"reconnect_message": {
-		"message": "Kas \u00fchendada uuesti (R), valida teine \u00fchendus (C) v\u00f5i v\u00e4ljuda (X)?"
+		"message": "Kas ühendada uuesti (R), valida teine ühendus (C) või väljuda (X)?"
 	},
 	"relay_retry": {
-		"message": "Uuesti proovimine \u2026"
+		"message": "Uuesti proovimine …"
 	},
 	"restore_prefs": {
 		"message": "Varukoopia taastamine"
 	},
 	"shortcut_list_aria_label": {
-		"message": "salvestatud \u00fchendused"
+		"message": "salvestatud ühendused"
 	},
 	"ssh_argstr_label": {
 		"message": "SSH argumendid"
@@ -235,20 +260,80 @@
 	"terminal_profile_label": {
 		"message": "Praegune profiil"
 	},
+	"tip_1": {
+		"message": "Linkide avamiseks hoidke nendel klõpsamisel all klahvi Ctrl (Mac OS-is klahvi Cmd)."
+	},
+	"tip_10": {
+		"message": "Aknas käitamisel avab klahvikombinatsioon Ctrl-Tõstuklahv-N uue seansi."
+	},
+	"tip_11": {
+		"message": "Klahve/otseteid saab uuesti siduda: https://goo.gl/LWRndr"
+	},
+	"tip_2": {
+		"message": "Kuvage märguanded brauseris käsuga hterm-notify: https://goo.gl/ZNxGdF"
+	},
+	"tip_3": {
+		"message": "Looge ühendus omnikastikesest, sisestades käsu „ssh <profile name>”: https://goo.gl/V7o8ki"
+	},
+	"tip_4": {
+		"message": "Chrome OS saab failisüsteeme ühendada SFTP kaudu ja sirvida rakenduse Failid kaudu. Kasutage käsku „SFTP Mount”, mitte „Connect”."
+	},
+	"tip_5": {
+		"message": "Looge ühendus veebilehtedel olevate ssh:// linkide kaudu või salvestage järjehoidja: https://goo.gl/zS8EZD"
+	},
+	"tip_6": {
+		"message": "Määrake väljundi/viiba värv 16 põhivärvi, 256 värvi või täieliku 24-bitise värvivaliku abil: http://tldp.org/HOWTO/Bash-Prompt-HOWTO/x329.html"
+	},
+	"tip_7": {
+		"message": "Kopeerige lõikelauale: emacs/vim/jms …, kasutades üksust OSC-52: https://goo.gl/XSnyLo"
+	},
+	"tip_8": {
+		"message": "Vestelge teiste htermi / Secure Shelli kasutajatega: chromium-hterm@chromium.org: https://goo.gl/RYHiK"
+	},
+	"tip_9": {
+		"message": "Kas leidsite vea?  Soovite uut funktsiooni?  Andke meile sellest teada: https://goo.gl/vb94JY"
+	},
 	"unexpected_error": {
-		"message": "Ilmnes ootamatu viga. \u00dcksikasjade n\u00e4gemiseks vaadake JavaScripti konsooli."
+		"message": "Ilmnes ootamatu viga. Üksikasjade nägemiseks vaadake JavaScripti konsooli."
 	},
 	"unmount_button_label": {
 		"message": "Eemalda SFTP"
 	},
 	"update_available_tooltip": {
-		"message": "V\u00e4rskendus on saadaval. Sulgege k\u00f5ik aknad."
+		"message": "Värskendus on saadaval. Sulgege kõik aknad."
 	},
-	"welcome_faq": {
-		"message": "Vastused korduma kippuvatele k\u00fcsimustele: $1 (avamiseks hoidke juhtklahvi all ja kl\u00f5psake linkidel)",
+	"welcome_changelog": {
+		"message": "Muudatuste logi / väljalaskemärkmed: $1",
 		"placeholders": {
 			"1": {
 				"content": "$1"
+			}
+		}
+	},
+	"welcome_faq": {
+		"message": "Vastused korduma kippuvatele küsimustele: $1 (avamiseks hoidke juhtklahvi all ja klõpsake linkidel)",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"welcome_release_highlights": {
+		"message": "Suured muudatused pärast versiooni $1:",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			}
+		}
+	},
+	"welcome_tip_of_day": {
+		"message": "Juhuslik professionaali nõuanne #$1: $2",
+		"placeholders": {
+			"1": {
+				"content": "$1"
+			},
+			"2": {
+				"content": "$2"
 			}
 		}
 	},
@@ -264,6 +349,6 @@
 		}
 	},
 	"zoom_warning": {
-		"message": "Seadistage suumi tase Chrome'i men\u00fc\u00fcs 100%-le"
+		"message": "Seadistage suumi tase Chrome'i menüüs 100%-le"
 	}
 }

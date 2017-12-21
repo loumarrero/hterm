@@ -30,6 +30,26 @@ nassh.Stream.ERR_STREAM_CANT_READ = 'Stream has no read permission';
 nassh.Stream.ERR_STREAM_CANT_WRITE = 'Stream has no write permission';
 
 /**
+ * Convert binary byte array into base64 ascii.
+ *
+ * @param {!Array<!number>} b An array of bytes.
+ * @return {!string} The base64 encoding of the byte array.
+ */
+nassh.Stream.binaryToAscii = function(b) {
+  return btoa(b.map((byte) => String.fromCharCode(byte)).join(''));
+};
+
+/**
+ * Convert ascii base64 into binary byte array.
+ *
+ * @param {!string} a A base64-encoded string.
+ * @return {!Array<!number>} The array of byte values encoded in the string.
+ */
+nassh.Stream.asciiToBinary = function(a) {
+  return Array.prototype.map.call(atob(a), (char) => char.charCodeAt(0));
+};
+
+/**
  * Open a stream, calling back when complete.
  */
 nassh.Stream.prototype.asyncOpen_ = function(path, onOpen) {
@@ -38,9 +58,16 @@ nassh.Stream.prototype.asyncOpen_ = function(path, onOpen) {
 
 /**
  * Read from a stream, calling back with the result.
+ *
+ * The default implementation does not actually send data to the client, but
+ * assumes that it is instead pushed to the client using the
+ * onDataAvailable event.
  */
 nassh.Stream.prototype.asyncRead = function(size, onRead) {
-  throw nassh.Stream.ERR_NOT_IMPLEMENTED;
+  if (this.onDataAvailable === undefined)
+    throw nassh.Stream.ERR_NOT_IMPLEMENTED;
+
+  setTimeout(() => onRead(''), 0);
 };
 
 /**

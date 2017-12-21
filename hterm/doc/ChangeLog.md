@@ -1,3 +1,98 @@
+# 1.76, 2017-12-13, Standards/compatibility fixes & OSC-8 links & OSC-1337 image features.
+
+* change default terminal encoding to utf8
+* invert drag & drop format preferences
+* handle ISO-8613-6 SGR subparameters
+* default all character maps to US/ASCII when resetting
+* fix reset after custom text attributes
+* separate terminal full & soft reset code paths
+* move vt reset calls into the terminal layer
+* reset SGR attributes during soft resets
+* move cursor save/restore state from per-terminal to per-screen
+* rename CHA comments to match DEC docs
+* support DECSET 1007 for controlling alternate scroll mode
+* hoist openUrl to main namespace
+* support OSC 8 for hyperlinking text
+* add localization logic
+* drop max-string-sequence support
+* add a test to keep nassh translations in sync
+* allow keybindings for unknown keys
+* add a default PASS mapping for the Clear key
+* use new lib.f.getOs helper
+* include all profiles all the time when backing up
+* implement OSC 1337 file display/transfer
+
+# 1.75, 2017-11-20, Many color/style/mouse fixes & features.
+
+* Fix parsing multiple SGR true color sequences.
+* Add support for double underlining (SGR 21).
+* Document a few more CSI options.
+* Fix handling of inverse text with true colors.
+* Simplify invisible text processing.
+* Fix DECSET/DECRST 1048 handling.
+* Stop changing color palettes when restoring cursor state.
+* Handle X10 & X11 mouse reporting modes.
+* Support UTF-8 & SGR mouse reporting modes.
+* Optimize mouse move reporting.
+* Return early on mouse move events when possible.
+
+# 1.74, 2017-10-27, Minor improvements.
+
+* Implement FocusIn/Out events.
+* Finish implementing enable-clipboard-write.
+* Document more OSC sequences.
+
+# 1.73, 2017-10-16, Various bugfixes and minor features.
+
+* Document source code.
+* Implement OSC 12 (text cursor color).
+* io: buffer data when in background.
+* io: add a hideOverlay helper.
+* Report meta key too with CSI sequences.
+* Handle drag & drop nicely.
+* Stop mangling input from IMEs/etc...
+
+# 1.72, 2017-09-12, More bugfixes.
+
+* Drop duplicate resize call.
+* Fix console warning.
+* Fix container matching logic wrt ascii & blink settings.
+* Switch to Node constants.
+* Update the embedding document.
+* Restore cursor style after ringing the bell.
+
+# 1.71, 2017-09-01, Bugfixes galore.
+
+* Fix replacing wide chars with narrow chars.
+* Do not warn about unknown sequences by default.
+* Avoid recalculating string display widths when possible.
+* Move initial cursor location off screen again during startup.
+* Fix processing of split ST sequences across buffers.
+* Fix overlaying/inserting combining characters.
+
+# 1.70, 2017-08-16, Improve Unicode handling.
+
+* Add ids to more internal elements for debugging.
+* Disable drag & drop of text/content.
+* Fix helper scripts/docs to use POSIX portable \033 instead of \e with printf.
+* Drop support for old Chrome <21 versions with storage setup.
+* Rewrite Unicode processing to avoid stripping combining characters.
+* Make encoding state internal and add setEncoding callback to the API.
+* Stop matching 8-bit control codes in utf8 mode.
+
+# 1.69, 2017-08-08, Improve cursor positioning.
+
+* Add a pref for default terminal encoding.
+* Add a helper/document for the new notification position.
+* Switch cursor positioning to use CSS vars.
+
+# 1.68, 2017-07-26, New feature polish, and robustify character maps.
+
+* Restore native pasting as a fallback for the open web.
+* Change default G1 character map to US/ASCII.
+* Change DECCKM mouse wheel events to default to off.
+* Add support for DOCS for transitioning to UTF-8 (ESC+%).
+
 # 1.67, 2017-07-17, New feature polish.
 
 * Open links on macOS via cmd+click.

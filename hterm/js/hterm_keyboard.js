@@ -282,14 +282,16 @@ hterm.Keyboard.prototype.uninstallKeyboard = function() {
 /**
  * Handle onTextInput events.
  *
- * We're not actually supposed to get these, but we do on the Mac in the case
- * where a third party app sends synthetic keystrokes to Chrome.
+ * These are generated when using IMEs, Virtual Keyboards (VKs), compose keys,
+ * Unicode input, etc...
  */
 hterm.Keyboard.prototype.onTextInput_ = function(e) {
   if (!e.data)
     return;
 
-  e.data.split('').forEach(this.terminal.onVTKeystroke.bind(this.terminal));
+  // Just pass the generated buffer straight down.  No need for us to split it
+  // up or otherwise parse it ahead of times.
+  this.terminal.onVTKeystroke(e.data);
 };
 
 /**
@@ -368,8 +370,12 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
 
   var keyDef = this.keyMap.keyDefs[e.keyCode];
   if (!keyDef) {
-    console.warn('No definition for keyCode: ' + e.keyCode);
-    return;
+    // If this key hasn't been explicitly registered, fall back to the unknown
+    // key mapping (keyCode == 0), and then automatically register it to avoid
+    // any further warnings here.
+    console.warn(`No definition for key ${e.key} (keyCode ${e.keyCode})`);
+    keyDef = this.keyMap.keyDefs[0];
+    this.keyMap.addKeyDef(e.keyCode, keyDef);
   }
 
   // The type of action we're going to use.
@@ -524,28 +530,22 @@ hterm.Keyboard.prototype.onKeyDown_ = function(e) {
     meta = false;
   }
 
-  if (action.substr(0, 2) == '\x1b[' && (alt || control || shift)) {
+  if (action.substr(0, 2) == '\x1b[' && (alt || control || shift || meta)) {
     // The action is an escape sequence that and it was triggered in the
     // presence of a keyboard modifier, we may need to alter the action to
     // include the modifier before sending it.
 
-    var mod;
-
-    if (shift && !(alt || control)) {
-      mod = ';2';
-    } else if (alt && !(shift || control)) {
-      mod = ';3';
-    } else if (shift && alt && !control) {
-      mod = ';4';
-    } else if (control && !(shift || alt)) {
-      mod = ';5';
-    } else if (shift && control && !alt) {
-      mod = ';6';
-    } else if (alt && control && !shift) {
-      mod = ';7';
-    } else if (shift && alt && control) {
-      mod = ';8';
-    }
+    // The math is funky but aligns w/xterm.
+    let imod = 1;
+    if (shift)
+      imod += 1;
+    if (alt)
+      imod += 2;
+    if (control)
+      imod += 4;
+    if (meta)
+      imod += 8;
+    let mod = ';' + imod;
 
     if (action.length == 3) {
       // Some of the CSI sequences have zero parameters unless modified.

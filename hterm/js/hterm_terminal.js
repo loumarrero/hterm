@@ -104,6 +104,7 @@ hterm.Terminal = function(opt_profileId) {
 
   // Terminal bell sound.
   this.bellAudio_ = this.document_.createElement('audio');
+  this.bellAudio_.id = 'hterm:bell-audio';
   this.bellAudio_.setAttribute('preload', 'auto');
 
   // All terminal bell notifications that have been generated (not necessarily
@@ -124,6 +125,8 @@ hterm.Terminal = function(opt_profileId) {
 
   // The VT escape sequence interpreter.
   this.vt = new hterm.VT(this);
+
+  this.saveCursorAndState(true);
 
   // The keyboard handler.
   this.keyboard = new hterm.Keyboard(this);
@@ -146,6 +149,11 @@ hterm.Terminal = function(opt_profileId) {
 
   this.realizeSize_(80, 24);
   this.setDefaultTabStops();
+
+  // Whether we allow images to be shown.
+  this.allowImagesInline = null;
+
+  this.reportFocus = false;
 
   this.setProfile(opt_profileId || 'default',
                   function() { this.onTerminalReady(); }.bind(this));
@@ -398,6 +406,12 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
     },
 
     'font-size': function(v) {
+      v = parseInt(v);
+      if (v <= 0) {
+        console.error(`Invalid font size: ${v}`);
+        return;
+      }
+
       terminal.setFontSize(v);
     },
 
@@ -431,10 +445,6 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
       }
     },
 
-    'max-string-sequence': function(v) {
-      terminal.vt.maxStringSequence = v;
-    },
-
     'media-keys-are-fkeys': function(v) {
       terminal.keyboard.mediaKeysAreFKeys = v;
     },
@@ -457,11 +467,9 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
 
     'pass-alt-number': function(v) {
       if (v == null) {
-        var osx = window.navigator.userAgent.match(/Mac OS X/);
-
         // Let Alt-1..9 pass to the browser (to control tab switching) on
         // non-OS X systems, or if hterm is not opened in an app window.
-        v = (!osx && hterm.windowType != 'popup');
+        v = (hterm.os != 'mac' && hterm.windowType != 'popup');
       }
 
       terminal.passAltNumber = v;
@@ -469,11 +477,9 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
 
     'pass-ctrl-number': function(v) {
       if (v == null) {
-        var osx = window.navigator.userAgent.match(/Mac OS X/);
-
         // Let Ctrl-1..9 pass to the browser (to control tab switching) on
         // non-OS X systems, or if hterm is not opened in an app window.
-        v = (!osx && hterm.windowType != 'popup');
+        v = (hterm.os != 'mac' && hterm.windowType != 'popup');
       }
 
       terminal.passCtrlNumber = v;
@@ -481,11 +487,9 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
 
     'pass-meta-number': function(v) {
       if (v == null) {
-        var osx = window.navigator.userAgent.match(/Mac OS X/);
-
         // Let Meta-1..9 pass to the browser (to control tab switching) on
         // OS X systems, or if hterm is not opened in an app window.
-        v = (osx && hterm.windowType != 'popup');
+        v = (hterm.os == 'mac' && hterm.windowType != 'popup');
       }
 
       terminal.passMetaNumber = v;
@@ -537,6 +541,10 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
       terminal.keyboard.shiftInsertPaste = v;
     },
 
+    'terminal-encoding': function(v) {
+      terminal.vt.setEncoding(v);
+    },
+
     'user-css': function(v) {
       terminal.scrollPort_.setUserCssUrl(v);
     },
@@ -558,6 +566,10 @@ hterm.Terminal.prototype.setProfile = function(profileId, opt_callback) {
     'word-break-match-middle': function(v) {
       terminal.primaryScreen_.wordBreakMatchMiddle = v;
       terminal.alternateScreen_.wordBreakMatchMiddle = v;
+    },
+
+    'allow-images-inline': function(v) {
+      terminal.allowImagesInline = v;
     },
   });
 
@@ -733,6 +745,21 @@ hterm.Terminal.prototype.uninstallKeyboard = function() {
 }
 
 /**
+ * Set a CSS variable.
+ *
+ * Normally this is used to set variables in the hterm namespace.
+ *
+ * @param {string} name The variable to set.
+ * @param {string} value The value to assign to the variable.
+ * @param {string?} opt_prefix The variable namespace/prefix to use.
+ */
+hterm.Terminal.prototype.setCssVar = function(name, value,
+                                              opt_prefix='--hterm-') {
+  this.document_.documentElement.style.setProperty(
+      `${opt_prefix}${name}`, value);
+};
+
+/**
  * Set the font size for this terminal.
  *
  * Call setFontSize(0) to reset to the default font size.
@@ -742,14 +769,13 @@ hterm.Terminal.prototype.uninstallKeyboard = function() {
  * @param {number} px The desired font size, in pixels.
  */
 hterm.Terminal.prototype.setFontSize = function(px) {
-  if (px === 0)
+  if (px <= 0)
     px = this.prefs_.get('font-size');
 
   this.scrollPort_.setFontSize(px);
-  this.document_.documentElement.style.setProperty(
-      '--hterm-charsize-width', this.scrollPort_.characterSize.width + 'px');
-  this.document_.documentElement.style.setProperty(
-      '--hterm-charsize-height', this.scrollPort_.characterSize.height + 'px');
+  this.setCssVar('charsize-width', this.scrollPort_.characterSize.width + 'px');
+  this.setCssVar('charsize-height',
+                 this.scrollPort_.characterSize.height + 'px');
 };
 
 /**
@@ -790,8 +816,7 @@ hterm.Terminal.prototype.syncMousePasteButton = function() {
     return;
   }
 
-  var ary = navigator.userAgent.match(/\(X11;\s+(\S+)/);
-  if (!ary || ary[1] == 'CrOS') {
+  if (hterm.os != 'linux') {
     this.mousePasteButton = 1;  // Middle mouse button.
   } else {
     this.mousePasteButton = 2;  // Right mouse button.
@@ -828,20 +853,18 @@ hterm.Terminal.prototype.syncBoldSafeState = function() {
  * Enable or disable blink based on the enable-blink pref.
  */
 hterm.Terminal.prototype.syncBlinkState = function() {
-  this.document_.documentElement.style.setProperty(
-      '--hterm-blink-node-duration',
-      this.prefs_.get('enable-blink') ? '0.7s' : '0');
+  this.setCssVar('node-duration',
+                 this.prefs_.get('enable-blink') ? '0.7s' : '0');
 };
 
 /**
  * Set the mouse cursor style based on the current terminal mode.
  */
 hterm.Terminal.prototype.syncMouseStyle = function() {
-  this.document_.documentElement.style.setProperty(
-      '--hterm-mouse-cursor-style',
-      this.vt.mouseReport == this.vt.MOUSE_REPORT_DISABLED ?
-          'var(--hterm-mouse-cursor-text)' :
-          'var(--hterm-mouse-cursor-pointer)');
+  this.setCssVar('mouse-cursor-style',
+                 this.vt.mouseReport == this.vt.MOUSE_REPORT_DISABLED ?
+                     'var(--hterm-mouse-cursor-text)' :
+                     'var(--hterm-mouse-cursor-pointer)');
 };
 
 /**
@@ -909,6 +932,38 @@ hterm.Terminal.prototype.restoreCursor = function(cursor) {
  */
 hterm.Terminal.prototype.clearCursorOverflow = function() {
   this.screen_.cursorPosition.overflow = false;
+};
+
+/**
+ * Save the current cursor state to the corresponding screens.
+ *
+ * See the hterm.Screen.CursorState class for more details.
+ *
+ * @param {boolean=} both If true, update both screens, else only update the
+ *     current screen.
+ */
+hterm.Terminal.prototype.saveCursorAndState = function(both) {
+  if (both) {
+    this.primaryScreen_.saveCursorAndState(this.vt);
+    this.alternateScreen_.saveCursorAndState(this.vt);
+  } else
+    this.screen_.saveCursorAndState(this.vt);
+};
+
+/**
+ * Restore the saved cursor state in the corresponding screens.
+ *
+ * See the hterm.Screen.CursorState class for more details.
+ *
+ * @param {boolean=} both If true, update both screens, else only update the
+ *     current screen.
+ */
+hterm.Terminal.prototype.restoreCursorAndState = function(both) {
+  if (both) {
+    this.primaryScreen_.restoreCursorAndState(this.vt);
+    this.alternateScreen_.restoreCursorAndState(this.vt);
+  } else
+    this.screen_.restoreCursorAndState(this.vt);
 };
 
 /**
@@ -1152,22 +1207,34 @@ hterm.Terminal.prototype.wipeContents = function() {
 
 /**
  * Full terminal reset.
+ *
+ * Perform a full reset to the default values listed in
+ * https://vt100.net/docs/vt510-rm/RIS.html
  */
 hterm.Terminal.prototype.reset = function() {
+  this.vt.reset();
+
   this.clearAllTabStops();
   this.setDefaultTabStops();
 
-  this.clearHome(this.primaryScreen_);
-  this.primaryScreen_.textAttributes.reset();
+  const resetScreen = (screen) => {
+    // We want to make sure to reset the attributes before we clear the screen.
+    // The attributes might be used to initialize default/empty rows.
+    screen.textAttributes.reset();
+    screen.textAttributes.resetColorPalette();
+    this.clearHome(screen);
+    screen.saveCursorAndState(this.vt);
+  };
+  resetScreen(this.primaryScreen_);
+  resetScreen(this.alternateScreen_);
 
-  this.clearHome(this.alternateScreen_);
-  this.alternateScreen_.textAttributes.reset();
-
+  // Reset terminal options to their default values.
+  this.options_ = new hterm.Options();
   this.setCursorBlink(!!this.prefs_.get('cursor-blink'));
 
-  this.vt.reset();
+  this.setVTScrollRegion(null, null);
 
-  this.softReset();
+  this.setCursorVisible(true);
 };
 
 /**
@@ -1177,16 +1244,23 @@ hterm.Terminal.prototype.reset = function() {
  * http://www.vt100.net/docs/vt510-rm/DECSTR#T5-9
  */
 hterm.Terminal.prototype.softReset = function() {
+  this.vt.reset();
+
   // Reset terminal options to their default values.
   this.options_ = new hterm.Options();
 
   // We show the cursor on soft reset but do not alter the blink state.
   this.options_.cursorBlink = !!this.timeouts_.cursorBlink;
 
-  // Xterm also resets the color palette on soft reset, even though it doesn't
-  // seem to be documented anywhere.
-  this.primaryScreen_.textAttributes.resetColorPalette();
-  this.alternateScreen_.textAttributes.resetColorPalette();
+  const resetScreen = (screen) => {
+    // Xterm also resets the color palette on soft reset, even though it doesn't
+    // seem to be documented anywhere.
+    screen.textAttributes.reset();
+    screen.textAttributes.resetColorPalette();
+    screen.saveCursorAndState(this.vt);
+  };
+  resetScreen(this.primaryScreen_);
+  resetScreen(this.alternateScreen_);
 
   // The xterm man page explicitly says this will happen on soft reset.
   this.setVTScrollRegion(null, null);
@@ -1376,10 +1450,17 @@ hterm.Terminal.prototype.decorate = function(div,iframe) {
        ':root {' +
        '  --hterm-charsize-width: ' + this.scrollPort_.characterSize.width + 'px;' +
        '  --hterm-charsize-height: ' + this.scrollPort_.characterSize.height + 'px;' +
+       // Default position hides the cursor for when the window is initializing.
+       '  --hterm-cursor-offset-col: -1;' +
+       '  --hterm-cursor-offset-row: -1;' +
        '  --hterm-blink-node-duration: 0.7s;' +
        '  --hterm-mouse-cursor-text: text;' +
        '  --hterm-mouse-cursor-pointer: default;' +
        '  --hterm-mouse-cursor-style: var(--hterm-mouse-cursor-text);' +
+       '}' +
+       '.uri-node:hover {' +
+       '  text-decoration: underline;' +
+       '  cursor: pointer;' +
        '}' +
        '@keyframes blink {' +
        '  from { opacity: 1.0; }' +
@@ -1395,10 +1476,12 @@ hterm.Terminal.prototype.decorate = function(div,iframe) {
   this.document_.head.appendChild(style);
 
   this.cursorNode_ = this.document_.createElement('div');
+  this.cursorNode_.id = 'hterm:terminal-cursor';
   this.cursorNode_.className = 'cursor-node';
   this.cursorNode_.style.cssText =
       ('position: absolute;' +
-       'top: -99px;' +
+       'left: calc(var(--hterm-charsize-width) * var(--hterm-cursor-offset-col));' +
+       'top: calc(var(--hterm-charsize-height) * var(--hterm-cursor-offset-row));' +
        'display: block;' +
        'width: var(--hterm-charsize-width);' +
        'height: var(--hterm-charsize-height);' +
@@ -1419,6 +1502,7 @@ hterm.Terminal.prototype.decorate = function(div,iframe) {
   //
   // It's a hack, but it's the cleanest way I could find.
   this.scrollBlockerNode_ = this.document_.createElement('div');
+  this.scrollBlockerNode_.id = 'hterm:mouse-drag-scroll-blocker';
   this.scrollBlockerNode_.style.cssText =
       ('position: absolute;' +
        'top: -99px;' +
@@ -1649,6 +1733,10 @@ hterm.Terminal.prototype.print = function(str) {
   var startOffset = 0;
 
   var strWidth = lib.wc.strWidth(str);
+  // Fun edge case: If the string only contains zero width codepoints (like
+  // combining characters), we make sure to iterate at least once below.
+  if (strWidth == 0 && str)
+    strWidth = 1;
 
   while (startOffset < strWidth) {
     if (this.options_.wraparound && this.screen_.cursorPosition.overflow) {
@@ -1678,15 +1766,16 @@ hterm.Terminal.prototype.print = function(str) {
 
     var tokens = hterm.TextAttributes.splitWidecharString(substr);
     for (var i = 0; i < tokens.length; i++) {
-      if (tokens[i].wcNode)
-        this.screen_.textAttributes.wcNode = true;
+      this.screen_.textAttributes.wcNode = tokens[i].wcNode;
+      this.screen_.textAttributes.asciiNode = tokens[i].asciiNode;
 
       if (this.options_.insertMode) {
-          this.screen_.insertString(tokens[i].str);
+        this.screen_.insertString(tokens[i].str, tokens[i].wcStrWidth);
       } else {
-        this.screen_.overwriteString(tokens[i].str);
+        this.screen_.overwriteString(tokens[i].str, tokens[i].wcStrWidth);
       }
       this.screen_.textAttributes.wcNode = false;
+      this.screen_.textAttributes.asciiNode = true;
     }
 
     this.screen_.maybeClipCurrentRow();
@@ -1841,7 +1930,8 @@ hterm.Terminal.prototype.reverseLineFeed = function() {
 hterm.Terminal.prototype.eraseToLeft = function() {
   var cursor = this.saveCursor();
   this.setCursorColumn(0);
-  this.screen_.overwriteString(lib.f.getWhitespace(cursor.column + 1));
+  const count = cursor.column + 1;
+  this.screen_.overwriteString(lib.f.getWhitespace(count), count);
   this.restoreCursor(cursor);
 };
 
@@ -1881,7 +1971,7 @@ hterm.Terminal.prototype.eraseToRight = function(opt_count) {
   }
 
   var cursor = this.saveCursor();
-  this.screen_.overwriteString(lib.f.getWhitespace(count));
+  this.screen_.overwriteString(lib.f.getWhitespace(count), count);
   this.restoreCursor(cursor);
   this.clearCursorOverflow();
 };
@@ -1953,7 +2043,7 @@ hterm.Terminal.prototype.fill = function(ch) {
   for (var row = 0; row < this.screenSize.height; row++) {
     for (var col = 0; col < this.screenSize.width; col++) {
       this.setAbsoluteCursorPosition(row, col);
-      this.screen_.overwriteString(ch);
+      this.screen_.overwriteString(ch, 1);
     }
   }
 
@@ -2068,7 +2158,7 @@ hterm.Terminal.prototype.insertSpace = function(count) {
   var cursor = this.saveCursor();
 
   var ws = lib.f.getWhitespace(count || 1);
-  this.screen_.insertString(ws);
+  this.screen_.insertString(ws, ws.length);
   this.screen_.maybeClipCurrentRow();
 
   this.restoreCursor(cursor);
@@ -2376,7 +2466,7 @@ hterm.Terminal.prototype.ringBell = function() {
 
   var self = this;
   setTimeout(function() {
-      self.cursorNode_.style.backgroundColor = self.prefs_.get('cursor-color');
+      self.restyleCursor_();
     }, 200);
 
   // bellSquelchTimeout_ affects both audio and notification bells.
@@ -2587,7 +2677,7 @@ hterm.Terminal.prototype.syncCursorPosition_ = function() {
 
   if (cursorRowIndex > bottomRowIndex) {
     // Cursor is scrolled off screen, move it outside of the visible area.
-    this.cursorNode_.style.top = -this.scrollPort_.characterSize.height + 'px';
+    this.setCssVar('cursor-offset-row', '-1');
     return;
   }
 
@@ -2597,16 +2687,18 @@ hterm.Terminal.prototype.syncCursorPosition_ = function() {
     this.cursorNode_.style.display = '';
   }
 
-
-  this.cursorNode_.style.top = this.scrollPort_.visibleRowTopMargin +
-      this.scrollPort_.characterSize.height * (cursorRowIndex - topRowIndex) +
-      'px';
-  this.cursorNode_.style.left = this.scrollPort_.characterSize.width *
-      this.screen_.cursorPosition.column + 'px';
+  // Position the cursor using CSS variable math.  If we do the math in JS,
+  // the float math will end up being more precise than the CSS which will
+  // cause the cursor tracking to be off.
+  this.setCssVar(
+      'cursor-offset-row',
+      `${cursorRowIndex - topRowIndex} + ` +
+      `${this.scrollPort_.visibleRowTopMargin}px`);
+  this.setCssVar('cursor-offset-col', this.screen_.cursorPosition.column);
 
   this.cursorNode_.setAttribute('title',
-                                '(' + this.screen_.cursorPosition.row +
-                                ', ' + this.screen_.cursorPosition.column +
+                                '(' + this.screen_.cursorPosition.column +
+                                ', ' + this.screen_.cursorPosition.row +
                                 ')');
 
   // Update the caret for a11y purposes.
@@ -2685,6 +2777,7 @@ hterm.Terminal.prototype.showZoomWarning_ = function(state) {
       return;
 
     this.zoomWarningNode_ = this.document_.createElement('div');
+    this.zoomWarningNode_.id = 'hterm:zoom-warning';
     this.zoomWarningNode_.style.cssText = (
         'color: black;' +
         'background-color: #ff2222;' +
@@ -2773,23 +2866,31 @@ hterm.Terminal.prototype.showOverlay = function(msg, opt_timeout) {
   this.overlayNode_.style.left = (divSize.width - overlaySize.width -
       this.scrollPort_.currentScrollbarWidthPx) / 2 + 'px';
 
-  var self = this;
-
   if (this.overlayTimeout_)
     clearTimeout(this.overlayTimeout_);
 
   if (opt_timeout === null)
     return;
 
-  this.overlayTimeout_ = setTimeout(function() {
-      self.overlayNode_.style.opacity = '0';
-      self.overlayTimeout_ = setTimeout(function() {
-          if (self.overlayNode_.parentNode)
-            self.overlayNode_.parentNode.removeChild(self.overlayNode_);
-          self.overlayTimeout_ = null;
-          self.overlayNode_.style.opacity = '0.75';
-        }, 200);
-    }, opt_timeout || 1500);
+  this.overlayTimeout_ = setTimeout(() => {
+    this.overlayNode_.style.opacity = '0';
+    this.overlayTimeout_ = setTimeout(() => this.hideOverlay(), 200);
+  }, opt_timeout || 1500);
+};
+
+/**
+ * Hide the terminal overlay immediately.
+ *
+ * Useful when we show an overlay for an event with an unknown end time.
+ */
+hterm.Terminal.prototype.hideOverlay = function() {
+  if (this.overlayTimeout_)
+    clearTimeout(this.overlayTimeout_);
+  this.overlayTimeout_ = null;
+
+  if (this.overlayNode_.parentNode)
+    this.overlayNode_.parentNode.removeChild(this.overlayNode_);
+  this.overlayNode_.style.opacity = '0.75';
 };
 
 /**
@@ -2811,6 +2912,7 @@ hterm.Terminal.prototype.copyStringToClipboard = function(str) {
     setTimeout(this.showOverlay.bind(this, hterm.notifyCopyMessage, 500), 200);
 
   var copySource = this.document_.createElement('pre');
+  copySource.id = 'hterm:copy-to-clipboard-source';
   copySource.textContent = str;
   copySource.style.cssText = (
       '-webkit-user-select: text;' +
@@ -2838,6 +2940,180 @@ hterm.Terminal.prototype.copyStringToClipboard = function(str) {
   }
 
   copySource.parentNode.removeChild(copySource);
+};
+
+/**
+ * Display an image.
+ *
+ * @param {Object} options The image to display.
+ * @param {string=} options.name A human readable string for the image.
+ * @param {string|number=} options.size The size (in bytes).
+ * @param {boolean=} options.preserveAspectRatio Whether to preserve aspect.
+ * @param {boolean=} options.inline Whether to display the image inline.
+ * @param {string|number=} options.width The width of the image.
+ * @param {string|number=} options.height The height of the image.
+ * @param {string=} options.align Direction to align the image.
+ * @param {string} options.uri The source URI for the image.
+ */
+hterm.Terminal.prototype.displayImage = function(options) {
+  // Make sure we're actually given a resource to display.
+  if (options.uri === undefined)
+    return;
+
+  // Set up the defaults to simplify code below.
+  if (!options.name)
+    options.name = '';
+
+  // Has the user approved image display yet?
+  if (this.allowImagesInline !== true) {
+    this.newLine();
+    const row = this.getRowNode(this.scrollbackRows_.length +
+                                this.getCursorRow() - 1);
+
+    if (this.allowImagesInline === false) {
+      row.textContent = hterm.msg('POPUP_INLINE_IMAGE_DISABLED', [],
+                                  'Inline Images Disabled');
+      return;
+    }
+
+    // Show a prompt.
+    let button;
+    const span = this.document_.createElement('span');
+    span.innerText = hterm.msg('POPUP_INLINE_IMAGE', [], 'Inline Images');
+    span.style.fontWeight = 'bold';
+    span.style.borderWidth = '1px';
+    span.style.borderStyle = 'dashed';
+    button = this.document_.createElement('span');
+    button.innerText = hterm.msg('BUTTON_BLOCK', [], 'block');
+    button.style.marginLeft = '1em';
+    button.style.borderWidth = '1px';
+    button.style.borderStyle = 'solid';
+    button.addEventListener('click', () => {
+      this.prefs_.set('allow-images-inline', false);
+    });
+    span.appendChild(button);
+    button = this.document_.createElement('span');
+    button.innerText = hterm.msg('BUTTON_ALLOW_SESSION', [],
+                                 'allow this session');
+    button.style.marginLeft = '1em';
+    button.style.borderWidth = '1px';
+    button.style.borderStyle = 'solid';
+    button.addEventListener('click', () => {
+      this.allowImagesInline = true;
+    });
+    span.appendChild(button);
+    button = this.document_.createElement('span');
+    button.innerText = hterm.msg('BUTTON_ALLOW_ALWAYS', [], 'always allow');
+    button.style.marginLeft = '1em';
+    button.style.borderWidth = '1px';
+    button.style.borderStyle = 'solid';
+    button.addEventListener('click', () => {
+      this.prefs_.set('allow-images-inline', true);
+    });
+    span.appendChild(button);
+
+    row.appendChild(span);
+    return;
+  }
+
+  // See if we should show this object directly, or download it.
+  if (options.inline) {
+    const io = this.io.push();
+    io.showOverlay(hterm.msg('LOADING_RESOURCE_START', [options.name],
+                             'Loading $1 ...'), null);
+
+    // While we're loading the image, eat all the user's input.
+    io.onVTKeystroke = io.sendString = () => {};
+
+    // Initialize this new image.
+    const img = this.document_.createElement('img');
+    img.src = options.uri;
+    img.title = img.alt = options.name;
+
+    // Attach the image to the page to let it load/render.  It won't stay here.
+    // This is needed so it's visible and the DOM can calculate the height.  If
+    // the image is hidden or not in the DOM, the height is always 0.
+    this.document_.body.appendChild(img);
+
+    // Wait for the image to finish loading before we try moving it to the
+    // right place in the terminal.
+    img.onload = () => {
+      // Now that we have the image dimensions, figure out how to show it.
+      img.style.objectFit = options.preserveAspectRatio ? 'scale-down' : 'fill';
+      img.style.maxWidth = `${this.document_.body.clientWidth}px`;
+      img.style.maxHeight = `${this.document_.body.clientHeight}px`;
+
+      // Parse a width/height specification.
+      const parseDim = (dim, maxDim, cssVar) => {
+        if (!dim || dim == 'auto')
+          return '';
+
+        const ary = dim.match(/^([0-9]+)(px|%)?$/);
+        if (ary) {
+          if (ary[2] == '%')
+            return maxDim * parseInt(ary[1]) / 100 + 'px';
+          else if (ary[2] == 'px')
+            return dim;
+          else
+            return `calc(${dim} * var(${cssVar}))`;
+        }
+
+        return '';
+      };
+      img.style.width =
+          parseDim(options.width, this.document_.body.clientWidth,
+                   '--hterm-charsize-width');
+      img.style.height =
+          parseDim(options.height,  this.document_.body.clientHeight,
+                   '--hterm-charsize-height');
+
+      // Figure out how many rows the image occupies, then add that many.
+      // XXX: This count will be inaccurate if the font size changes on us.
+      const padRows = Math.ceil(img.clientHeight /
+                                this.scrollPort_.characterSize.height);
+      for (let i = 0; i < padRows; ++i)
+        this.newLine();
+
+      // Update the max height in case the user shrinks the character size.
+      img.style.maxHeight = `calc(${padRows} * var(--hterm-charsize-height))`;
+
+      // Move the image to the last row.  This way when we scroll up, it doesn't
+      // disappear when the first row gets clipped.  It will disappear when we
+      // scroll down and the last row is clipped ...
+      this.document_.body.removeChild(img);
+      // Create a wrapper node so we can do an absolute in a relative position.
+      // This helps with rounding errors between JS & CSS counts.
+      const div = this.document_.createElement('div');
+      div.style.position = 'relative';
+      div.style.textAlign = options.align;
+      img.style.position = 'absolute';
+      img.style.bottom = 'calc(0px - var(--hterm-charsize-height))';
+      div.appendChild(img);
+      const row = this.getRowNode(this.scrollbackRows_.length +
+                                  this.getCursorRow() - 1);
+      row.appendChild(div);
+
+      io.hideOverlay();
+      io.pop();
+    };
+
+    // If we got a malformed image, give up.
+    img.onerror = (e) => {
+      this.document_.body.removeChild(img);
+      io.showOverlay(hterm.msg('LOADING_RESOURCE_FAILED', [options.name],
+                               'Loading $1 failed ...'));
+      io.pop();
+    };
+  } else {
+    // We can't use chrome.downloads.download as that requires "downloads"
+    // permissions, and that works only in extensions, not apps.
+    const a = this.document_.createElement('a');
+    a.href = options.uri;
+    a.download = options.name;
+    this.document_.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
 };
 
 /**
@@ -2926,21 +3202,6 @@ hterm.Terminal.prototype.onVTKeystroke = function(string) {
 };
 
 /**
- * Launches url in a new tab.
- *
- * @param {string} url URL to launch in a new tab.
- */
-hterm.Terminal.prototype.openUrl = function(url) {
-  if (window.chrome && window.chrome.browser) {
-    // For Chrome v2 apps, we need to use this API to properly open windows.
-    chrome.browser.openTab({'url': url});
-  } else {
-    var win = window.open(url, '_blank');
-    win.focus();
-  }
-}
-
-/**
  * Open the selected url.
  */
 hterm.Terminal.prototype.openSelectedUrl_ = function() {
@@ -2974,7 +3235,7 @@ hterm.Terminal.prototype.openSelectedUrl_ = function() {
     }
   }
 
-  this.openUrl(str);
+  hterm.openUrl(str);
 }
 
 
@@ -3063,7 +3324,7 @@ hterm.Terminal.prototype.onMouse_ = function(e) {
       if ((this.mouseRightClickPaste && e.button == 2 /* right button */) ||
           e.button == this.mousePasteButton) {
         if (!this.paste())
-          console.warning('Could not paste manually due to web restrictions');;
+          console.warn('Could not paste manually due to web restrictions');
       }
     }
 
@@ -3138,6 +3399,11 @@ hterm.Terminal.prototype.onMouse = function(e) { };
 hterm.Terminal.prototype.onFocusChange_ = function(focused) {
   this.cursorNode_.setAttribute('focus', focused);
   this.restyleCursor_();
+
+  if (this.reportFocus) {
+    this.io.sendString(focused === true ? '\x1b[I' : '\x1b[O')
+  }
+
   if (focused === true)
     this.closeBellNotifications_();
 };

@@ -19,8 +19,7 @@
  *     automatically added as the first language if it is not already present.
  */
 lib.MessageManager = function(languages) {
-  this.languages_ = languages.map(
-      function(el) { return el.replace(/-/g, '_') });
+  this.languages_ = languages.map((el) => el.replace(/-/g, '_'));
 
   if (this.languages_.indexOf('en') == -1)
     this.languages_.unshift('en');
@@ -97,17 +96,12 @@ lib.MessageManager.prototype.loadMessages = function(
     url, onSuccess, opt_onError) {
   var xhr = new XMLHttpRequest();
 
-  xhr.onloadend = function() {
-    if (xhr.status != 200) {
-      if (opt_onError)
-        opt_onError(xhr.status);
-
-      return;
-    }
-
+  xhr.onload = () => {
     this.addMessages(JSON.parse(xhr.responseText));
     onSuccess();
-  }.bind(this);
+  };
+  if (opt_onError)
+    xhr.onerror = () => opt_onError(xhr);
 
   xhr.open('GET', url);
   xhr.send();
@@ -146,12 +140,14 @@ lib.MessageManager.prototype.get = function(msgname, opt_args, opt_default) {
     message = this.messages[msgname];
 
   } else {
-    if (window.chrome.i18n)
+    if (window.chrome && window.chrome.i18n)
       message = chrome.i18n.getMessage(msgname);
 
     if (!message) {
       console.warn('Unknown message: ' + msgname);
-      return (typeof opt_default == 'undefined') ? msgname : opt_default;
+      message = opt_default === undefined ? msgname : opt_default;
+      // Register the message with the default to avoid multiple warnings.
+      this.messages[msgname] = message;
     }
   }
 
@@ -199,7 +195,7 @@ lib.MessageManager.prototype.processI18nAttributes = function(dom) {
 lib.MessageManager.prototype.processI18nAttribute = function(node) {
   // Convert the "lower-and-dashes" attribute names into
   // "UPPER_AND_UNDER" style.
-  function thunk(str) { return str.replace(/-/g, '_').toUpperCase() }
+  const thunk = (str) => str.replace(/-/g, '_').toUpperCase();
 
   var i18n = node.getAttribute('i18n');
   if (!i18n)

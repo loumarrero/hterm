@@ -21,6 +21,16 @@ var hterm = {};
 hterm.windowType = null;
 
 /**
+ * The OS we're running under.
+ *
+ * Used when setting up OS-specific behaviors.
+ *
+ * This is set as part of hterm.init().  The value is invalid until
+ * initialization completes.
+ */
+hterm.os = null;
+
+/**
  * Warning message to display in the terminal when browser zoom is enabled.
  *
  * You can replace it with your own localized message.
@@ -64,9 +74,26 @@ hterm.testDeps = ['hterm.ScrollPort.Tests', 'hterm.Screen.Tests',
  *     initialization is complete.
  */
 lib.registerInit('hterm', function(onInit) {
+  function initOs(os) {
+    hterm.os = os;
+
+    onInit();
+  }
+
+  function initMessageManager() {
+    lib.f.getAcceptLanguages((languages) => {
+      if (!hterm.messageManager)
+        hterm.messageManager = new lib.MessageManager(languages);
+
+      // If OS detection fails, then we'll still set the value to something.
+      // The OS logic in hterm tends to be best effort anyways.
+      lib.f.getOs().then(initOs).catch(initOs);
+    });
+  }
+
   function onWindow(window) {
     hterm.windowType = window.type;
-    setTimeout(onInit, 0);
+    initMessageManager();
   }
 
   function onTab(tab) {
@@ -76,15 +103,12 @@ lib.registerInit('hterm', function(onInit) {
       // TODO(rginda): This is where we end up for a v1 app's background page.
       // Maybe windowType = 'none' would be more appropriate, or something.
       hterm.windowType = 'normal';
-      setTimeout(onInit, 0);
+      initMessageManager();
     }
   }
 
   if (!hterm.defaultStorage) {
-    var ary = navigator.userAgent.match(/\sChrome\/(\d\d)/);
-    var version = ary ? parseInt(ary[1]) : -1;
-    if (window.chrome && chrome.storage && chrome.storage.sync &&
-        version > 21) {
+    if (window.chrome && chrome.storage && chrome.storage.sync) {
       hterm.defaultStorage = new lib.Storage.Chrome(chrome.storage.sync);
     } else {
       hterm.defaultStorage = new lib.Storage.Local();
@@ -169,6 +193,18 @@ hterm.pasteFromClipboard = function(document) {
 };
 
 /**
+ * Return a formatted message in the current locale.
+ *
+ * @param {string} name The name of the message to return.
+ * @param {Array<string>=} args The message arguments, if required.
+ * @param {string=} string The default message text.
+ * @return {string} The localized message.
+ */
+hterm.msg = function(name, args = [], string) {
+  return hterm.messageManager.get('HTERM_' + name, args, string);
+};
+
+/**
  * Create a new notification.
  *
  * @param {Object} params Various parameters for the notification.
@@ -199,6 +235,21 @@ hterm.notify = function(params) {
   };
   return n;
 };
+
+/**
+ * Launches url in a new tab.
+ *
+ * @param {string} url URL to launch in a new tab.
+ */
+hterm.openUrl = function(url) {
+  if (window.chrome && chrome.browser && chrome.browser.openTab) {
+    // For Chrome v2 apps, we need to use this API to properly open windows.
+    chrome.browser.openTab({'url': url});
+  } else {
+    const win = window.open(url, '_blank');
+    win.focus();
+  }
+}
 
 /**
  * Constructor for a hterm.Size record.

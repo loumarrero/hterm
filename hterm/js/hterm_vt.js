@@ -28,6 +28,10 @@ hterm.VT = function(terminal) {
 
   terminal.onMouse = this.onTerminalMouse_.bind(this);
   this.mouseReport = this.MOUSE_REPORT_DISABLED;
+  this.mouseCoordinates = this.MOUSE_COORDINATES_X10;
+
+  // We only want to report mouse moves between cells, not between pixels.
+  this.lastMouseDragResponse_ = null;
 
   // Parse state left over from the last parse.  You should use the parseState
   // instance passed into your parse routine, rather than reading
@@ -47,15 +51,6 @@ hterm.VT = function(terminal) {
 
   // The amount of time we're willing to wait for the end of an OSC sequence.
   this.oscTimeLimit_ = 20000;
-
-  // Construct a regular expression to match the known one-byte control chars.
-  // This is used in parseUnknown_ to quickly scan a string for the next
-  // control character.
-  var cc1 = Object.keys(hterm.VT.CC1).map(
-      function(e) {
-        return '\\x' + lib.f.zpad(e.charCodeAt().toString(16), 2)
-      }).join('');
-  this.cc1Pattern_ = new RegExp('[' + cc1 + ']');
 
   // Decoder to maintain UTF-8 decode state.
   this.utf8Decoder_ = new lib.UTF8Decoder();
@@ -90,19 +85,14 @@ hterm.VT = function(terminal) {
   this.characterEncoding = 'utf-8';
 
   /**
-   * Max length of an unterminated DCS, OSC, PM or APC sequence before we give
-   * up and ignore the code.
-   *
-   * These all end with a String Terminator (ST, '\x9c', ESC '\\') or
-   * (BEL, '\x07') character, hence the "string sequence" moniker.
-   */
-  this.maxStringSequence = 1024;
-
-  /**
    * If true, emit warnings when we encounter a control character or escape
    * sequence that we don't recognize or explicitly ignore.
+   *
+   * We disable this by default as the console logging can be expensive when
+   * dumping binary files (e.g. `cat /dev/zero`) to the point where you can't
+   * recover w/out restarting.
    */
-  this.warnUnimplemented = true;
+  this.warnUnimplemented = false;
 
   /**
    * The set of available character maps (used by G0...G3 below).
@@ -138,10 +128,20 @@ hterm.VT = function(terminal) {
    */
   this.GR = 'G0';
 
-  // Saved state used in DECSC.
-  //
-  // This is a place to store a copy VT state, it is *not* the active state.
-  this.savedState_ = new hterm.VT.CursorState(this);
+  /**
+   * The current encoding of the terminal.
+   *
+   * We only support ECMA-35 and UTF-8, so go with a boolean here.
+   * The encoding can be locked too.
+   */
+  this.codingSystemUtf8_ = false;
+  this.codingSystemLocked_ = false;
+
+  // Construct a regular expression to match the known one-byte control chars.
+  // This is used in parseUnknown_ to quickly scan a string for the next
+  // control character.
+  this.cc1Pattern_ = null;
+  this.updateEncodingState_();
 };
 
 /**
@@ -150,11 +150,18 @@ hterm.VT = function(terminal) {
 hterm.VT.prototype.MOUSE_REPORT_DISABLED = 0;
 
 /**
+ * DECSET mode 9.
+ *
+ * Report mouse down events only.
+ */
+hterm.VT.prototype.MOUSE_REPORT_PRESS = 1;
+
+/**
  * DECSET mode 1000.
  *
  * Report mouse down/up events only.
  */
-hterm.VT.prototype.MOUSE_REPORT_CLICK = 1;
+hterm.VT.prototype.MOUSE_REPORT_CLICK = 2;
 
 /**
  * DECSET mode 1002.
@@ -162,6 +169,21 @@ hterm.VT.prototype.MOUSE_REPORT_CLICK = 1;
  * Report mouse down/up and movement while a button is down.
  */
 hterm.VT.prototype.MOUSE_REPORT_DRAG = 3;
+
+/**
+ * DEC mode for X10 coorindates (the default).
+ */
+hterm.VT.prototype.MOUSE_COORDINATES_X10 = 0;
+
+/**
+ * DEC mode 1005 for UTF-8 coorindates.
+ */
+hterm.VT.prototype.MOUSE_COORDINATES_UTF8 = 1;
+
+/**
+ * DEC mode 1006 for SGR coorindates.
+ */
+hterm.VT.prototype.MOUSE_COORDINATES_SGR = 2;
 
 /**
  * ParseState constructor.
@@ -178,6 +200,10 @@ hterm.VT.ParseState = function(defaultFunction, opt_buf) {
   this.pos = 0;
   this.func = defaultFunction;
   this.args = [];
+  // Whether any of the arguments in the args array have subarguments.
+  // e.g. All CSI sequences are integer arguments separated by semi-colons,
+  // so subarguments are further colon separated.
+  this.subargs = null;
 };
 
 /**
@@ -209,6 +235,11 @@ hterm.VT.ParseState.prototype.resetBuf = function(opt_buf) {
 /**
  * Reset the arguments list only.
  *
+ * Typically we reset arguments before parsing a sequence that uses them rather
+ * than always trying to make sure they're in a good state.  This can lead to
+ * confusion during debugging where args from a previous sequence appear to be
+ * "sticking around" in other sequences (which in reality don't use args).
+ *
  * @param {string} opt_arg_zero Optional initial value for args[0].
  */
 hterm.VT.ParseState.prototype.resetArguments = function(opt_arg_zero) {
@@ -218,20 +249,60 @@ hterm.VT.ParseState.prototype.resetArguments = function(opt_arg_zero) {
 };
 
 /**
+ * Parse an argument as an integer.
+ *
+ * This assumes the inputs are already in the proper format.  e.g. This won't
+ * handle non-numeric arguments.
+ *
+ * An "0" argument is treated the same as "" which means the default value will
+ * be applied.  This is what most terminal sequences expect.
+ *
+ * @param {string} argstr The argument to parse directly.
+ * @param {number=} defaultValue Default value if argstr is empty.
+ * @return {number} The parsed value.
+ */
+hterm.VT.ParseState.prototype.parseInt = function(argstr, defaultValue) {
+  if (defaultValue === undefined)
+    defaultValue = 0;
+
+  if (argstr) {
+    const ret = parseInt(argstr, 10);
+    // An argument of zero is treated as the default value.
+    return ret == 0 ? defaultValue : ret;
+  }
+  return defaultValue;
+};
+
+/**
  * Get an argument as an integer.
  *
  * @param {number} argnum The argument number to retrieve.
+ * @param {number=} defaultValue Default value if the argument is empty.
+ * @return {number} The parsed value.
  */
 hterm.VT.ParseState.prototype.iarg = function(argnum, defaultValue) {
-  var str = this.args[argnum];
-  if (str) {
-    var ret = parseInt(str, 10);
-    // An argument of zero is treated as the default value.
-    if (ret == 0)
-      ret = defaultValue;
-    return ret;
-  }
-  return defaultValue;
+  return this.parseInt(this.args[argnum], defaultValue);
+};
+
+/**
+ * Check whether an argument has subarguments.
+ *
+ * @param {number} argnum The argument number to check.
+ * @return {number} Whether the argument has subarguments.
+ */
+hterm.VT.ParseState.prototype.argHasSubargs = function(argnum) {
+  return this.subargs && this.subargs[argnum];
+};
+
+/**
+ * Mark an argument as having subarguments.
+ *
+ * @param {number} argnum The argument number that has subarguments.
+ */
+hterm.VT.ParseState.prototype.argSetSubargs = function(argnum) {
+  if (this.subargs === null)
+    this.subargs = {};
+  this.subargs[argnum] = true;
 };
 
 /**
@@ -280,51 +351,19 @@ hterm.VT.ParseState.prototype.isComplete = function() {
   return this.buf == null || this.buf.length <= this.pos;
 };
 
-hterm.VT.CursorState = function(vt) {
-  this.vt_ = vt;
-  this.save();
-};
-
-hterm.VT.CursorState.prototype.save = function() {
-  this.cursor = this.vt_.terminal.saveCursor();
-
-  this.textAttributes = this.vt_.terminal.getTextAttributes().clone();
-
-  this.GL = this.vt_.GL;
-  this.GR = this.vt_.GR;
-
-  this.G0 = this.vt_.G0;
-  this.G1 = this.vt_.G1;
-  this.G2 = this.vt_.G2;
-  this.G3 = this.vt_.G3;
-};
-
-hterm.VT.CursorState.prototype.restore = function() {
-  this.vt_.terminal.restoreCursor(this.cursor);
-
-  this.vt_.terminal.setTextAttributes(this.textAttributes.clone());
-
-  this.vt_.GL = this.GL;
-  this.vt_.GR = this.GR;
-
-  this.vt_.G0 = this.G0;
-  this.vt_.G1 = this.G1;
-  this.vt_.G2 = this.G2;
-  this.vt_.G3 = this.G3;
-};
-
+/**
+ * Reset the VT back to baseline state.
+ */
 hterm.VT.prototype.reset = function() {
-  this.G0 = this.characterMaps.getMap('B');
-  this.G1 = this.characterMaps.getMap('0');
-  this.G2 = this.characterMaps.getMap('B');
-  this.G3 = this.characterMaps.getMap('B');
+  this.G0 = this.G1 = this.G2 = this.G3 =
+      this.characterMaps.getMap('B');
 
   this.GL = 'G0';
   this.GR = 'G0';
 
-  this.savedState_ = new hterm.VT.CursorState(this);
-
   this.mouseReport = this.MOUSE_REPORT_DISABLED;
+  this.mouseCoordinates = this.MOUSE_COORDINATES_X10;
+  this.lastMouseDragResponse_ = null;
 };
 
 /**
@@ -333,7 +372,10 @@ hterm.VT.prototype.reset = function() {
  * See the "Mouse Tracking" section of [xterm].
  */
 hterm.VT.prototype.onTerminalMouse_ = function(e) {
+  // Short circuit a few events to avoid unnecessary processing.
   if (this.mouseReport == this.MOUSE_REPORT_DISABLED)
+    return;
+  else if (this.mouseReport != this.MOUSE_REPORT_DRAG && e.type == 'mousemove')
     return;
 
   // Temporary storage for our response.
@@ -341,43 +383,75 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
 
   // Modifier key state.
   var mod = 0;
-  if (e.shiftKey)
-    mod |= 4;
-  if (e.metaKey || (this.terminal.keyboard.altIsMeta && e.altKey))
-    mod |= 8;
-  if (e.ctrlKey)
-    mod |= 16;
+  if (this.mouseReport != this.MOUSE_REPORT_PRESS) {
+    if (e.shiftKey)
+      mod |= 4;
+    if (e.metaKey || (this.terminal.keyboard.altIsMeta && e.altKey))
+      mod |= 8;
+    if (e.ctrlKey)
+      mod |= 16;
+  }
 
-  // TODO(rginda): We should also support mode 1005 and/or 1006 to extend the
-  // coordinate space.  Though, after poking around just a little, I wasn't
-  // able to get vi or emacs to use either of these modes.
-  var x = String.fromCharCode(lib.f.clamp(e.terminalColumn + 32, 32, 255));
-  var y = String.fromCharCode(lib.f.clamp(e.terminalRow + 32, 32, 255));
+  // X & Y coordinate reporting.
+  let x;
+  let y;
+  let limit = 255;
+  switch (this.mouseCoordinates) {
+    case this.MOUSE_COORDINATES_UTF8:
+      // UTF-8 mode is the same as X10 but with higher limits.
+      limit = 2047;
+    case this.MOUSE_COORDINATES_X10:
+      // X10 reports coordinates by encoding into strings.
+      x = String.fromCharCode(lib.f.clamp(e.terminalColumn + 32, 32, limit));
+      y = String.fromCharCode(lib.f.clamp(e.terminalRow + 32, 32, limit));
+      break;
+    case this.MOUSE_COORDINATES_SGR:
+      // SGR reports coordinates by transmitting the numbers directly.
+      x = e.terminalColumn;
+      y = e.terminalRow;
+      break;
+  }
 
   switch (e.type) {
     case 'wheel':
       // Mouse wheel is treated as button 1 or 2 plus an additional 64.
-      b = (((e.deltaY * -1) > 0) ? 0 : 1) + 96;
+      b = (((e.deltaY * -1) > 0) ? 0 : 1) + 64;
       b |= mod;
-      response = '\x1b[M' + String.fromCharCode(b) + x + y;
+      if (this.mouseCoordinates == this.MOUSE_COORDINATES_SGR)
+        response = `\x1b[<${b};${x};${y}M`;
+      else
+        response = '\x1b[M' + String.fromCharCode(b) + x + y;
 
       // Keep the terminal from scrolling.
       e.preventDefault();
       break;
 
     case 'mousedown':
-      // Buttons are encoded as button number plus 32.
-      var b = Math.min(e.button, 2) + 32;
+      // Buttons are encoded as button number.
+      var b = Math.min(e.button, 2);
+      // In X10 mode, we also add 32 for legacy reasons.
+      if (this.mouseCoordinates != this.MOUSE_COORDINATES_SGR)
+        b += 32;
 
       // And mix in the modifier keys.
       b |= mod;
 
-      response = '\x1b[M' + String.fromCharCode(b) + x + y;
+      if (this.mouseCoordinates == this.MOUSE_COORDINATES_SGR)
+        response = `\x1b[<${b};${x};${y}M`;
+      else
+        response = '\x1b[M' + String.fromCharCode(b) + x + y;
       break;
 
     case 'mouseup':
-      // Mouse up has no indication of which button was released.
-      response = '\x1b[M\x23' + x + y;
+      if (this.mouseReport != this.MOUSE_REPORT_PRESS) {
+        if (this.mouseCoordinates == this.MOUSE_COORDINATES_SGR) {
+          // SGR mode can report the released button.
+          response = `\x1b[<${e.button};${x};${y}m`;
+        } else {
+          // X10 mode has no indication of which button was released.
+          response = '\x1b[M\x23' + x + y;
+        }
+      }
       break;
 
     case 'mousemove':
@@ -386,7 +460,7 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
         // button press (e.g. if left & right are pressed, right is ignored),
         // and it only supports the first three buttons.  If none of them are
         // pressed, then XTerm flags it as a release.  We'll do the same.
-        b = 32;
+        b = this.mouseCoordinates == this.MOUSE_COORDINATES_SGR ? 0 : 32;
 
         // Priority here matches XTerm: left, middle, right.
         if (e.buttons & 0x1) {
@@ -409,7 +483,18 @@ hterm.VT.prototype.onTerminalMouse_ = function(e) {
         // And mix in the modifier keys.
         b |= mod;
 
-        response = '\x1b[M' + String.fromCharCode(b) + x + y;
+        if (this.mouseCoordinates == this.MOUSE_COORDINATES_SGR)
+          response = `\x1b[<${b};${x};${y}M`;
+        else
+          response = '\x1b[M' + String.fromCharCode(b) + x + y;
+
+        // If we were going to report the same cell because we moved pixels
+        // within, suppress the report.  This is what xterm does and cuts
+        // down on duplicate messages.
+        if (this.lastMouseDragResponse_ == response)
+          response = '';
+        else
+          this.lastMouseDragResponse_ = response;
       }
 
       break;
@@ -477,6 +562,46 @@ hterm.VT.prototype.decodeUTF8 = function(str) {
 };
 
 /**
+ * Set the encoding of the terminal.
+ *
+ * @param {string} encoding The name of the encoding to set.
+ */
+hterm.VT.prototype.setEncoding = function(encoding) {
+  switch (encoding) {
+    default:
+      console.warn('Invalid value for "terminal-encoding": ' + encoding);
+      // Fall through.
+    case 'iso-2022':
+      this.codingSystemUtf8_ = false;
+      this.codingSystemLocked_ = false;
+      break;
+    case 'utf-8-locked':
+      this.codingSystemUtf8_ = true;
+      this.codingSystemLocked_ = true;
+      break;
+    case 'utf-8':
+      this.codingSystemUtf8_ = true;
+      this.codingSystemLocked_ = false;
+      break;
+  }
+
+  this.updateEncodingState_();
+};
+
+/**
+ * Refresh internal state when the encoding changes.
+ */
+hterm.VT.prototype.updateEncodingState_ = function() {
+  // If we're in UTF8 mode, don't suport 8-bit escape sequences as we'll never
+  // see those -- everything should be UTF8!
+  var cc1 = Object.keys(hterm.VT.CC1)
+      .filter((e) => !this.codingSystemUtf8_ || e.charCodeAt() < 0x80)
+      .map((e) => '\\x' + lib.f.zpad(e.charCodeAt().toString(16), 2))
+      .join('');
+  this.cc1Pattern_ = new RegExp(`[${cc1}]`);
+};
+
+/**
  * The default parse function.
  *
  * This will scan the string for the first 1-byte control character (C0/C1
@@ -487,7 +612,7 @@ hterm.VT.prototype.parseUnknown_ = function(parseState) {
   var self = this;
 
   function print(str) {
-    if (self[self.GL].GL)
+    if (!self.codingSystemUtf8_ && self[self.GL].GL)
       str = self[self.GL].GL(str);
 
     self.terminal.print(str);
@@ -525,17 +650,27 @@ hterm.VT.prototype.parseCSI_ = function(parseState) {
   var ch = parseState.peekChar();
   var args = parseState.args;
 
+  const finishParsing = () => {
+    // Resetting the arguments isn't strictly necessary, but it makes debugging
+    // less confusing (otherwise args will stick around until the next sequence
+    // that needs arguments).
+    parseState.resetArguments();
+    // We need to clear subargs since we explicitly set it.
+    parseState.subargs = null;
+    parseState.resetParseFunction();
+  };
+
   if (ch >= '@' && ch <= '~') {
     // This is the final character.
     this.dispatch('CSI', this.leadingModifier_ + this.trailingModifier_ + ch,
                   parseState);
-    parseState.resetParseFunction();
+    finishParsing();
 
   } else if (ch == ';') {
     // Parameter delimiter.
     if (this.trailingModifier_) {
       // Parameter delimiter after the trailing modifier.  That's a paddlin'.
-      parseState.resetParseFunction();
+      finishParsing();
 
     } else {
       if (!args.length) {
@@ -546,21 +681,25 @@ hterm.VT.prototype.parseCSI_ = function(parseState) {
       args.push('');
     }
 
-  } else if (ch >= '0' && ch <= '9') {
+  } else if (ch >= '0' && ch <= '9' || ch == ':') {
     // Next byte in the current parameter.
 
     if (this.trailingModifier_) {
       // Numeric parameter after the trailing modifier.  That's a paddlin'.
-      parseState.resetParseFunction();
+      finishParsing();
     } else {
       if (!args.length) {
         args[0] = ch;
       } else {
         args[args.length - 1] += ch;
       }
+
+      // Possible sub-parameters.
+      if (ch == ':')
+        parseState.argSetSubargs(args.length - 1);
     }
 
-  } else if (ch >= ' ' && ch <= '?' && ch != ':') {
+  } else if (ch >= ' ' && ch <= '?') {
     // Modifier character.
     if (!args.length) {
       this.leadingModifier_ += ch;
@@ -574,7 +713,7 @@ hterm.VT.prototype.parseCSI_ = function(parseState) {
 
   } else {
     // Unexpected character in sequence, bail out.
-    parseState.resetParseFunction();
+    finishParsing();
   }
 
   parseState.advance(1);
@@ -590,60 +729,74 @@ hterm.VT.prototype.parseCSI_ = function(parseState) {
  * You can detect that parsing in complete by checking that the parse
  * function has changed back to the default parse function.
  *
- * If we encounter more than maxStringSequence characters, we send back
- * the unterminated sequence to be re-parsed with the default parser function.
- *
  * @return {boolean} If true, parsing is ongoing or complete.  If false, we've
  *     exceeded the max string sequence.
  */
 hterm.VT.prototype.parseUntilStringTerminator_ = function(parseState) {
   var buf = parseState.peekRemainingBuf();
-  var nextTerminator = buf.search(/(\x1b\\|\x07)/);
   var args = parseState.args;
+  // Since we might modify parse state buffer locally, if we want to advance
+  // the parse state buffer later on, we need to know how many chars we added.
+  let bufInserted = 0;
 
   if (!args.length) {
     args[0] = '';
     args[1] = new Date();
+  } else {
+    // If our saved buffer ends with an escape, it's because we were hoping
+    // it's an ST split across two buffers.  Move it from our saved buffer
+    // to the start of our current buffer for processing anew.
+    if (args[0].slice(-1) == '\x1b') {
+      args[0] = args[0].slice(0, -1);
+      buf = '\x1b' + buf;
+      bufInserted = 1;
+    }
   }
 
-  if (nextTerminator == -1) {
+  const nextTerminator = buf.search(/[\x1b\x07]/);
+  const terminator = buf[nextTerminator];
+  let foundTerminator;
+
+  // If the next escape we see is not a start of a ST, fall through.  This will
+  // either be invalid (embedded escape), or we'll queue it up (wait for \\).
+  if (terminator == '\x1b' && buf[nextTerminator + 1] != '\\')
+    foundTerminator = false;
+  else
+    foundTerminator = (nextTerminator != -1);
+
+  if (!foundTerminator) {
     // No terminator here, have to wait for the next string.
 
     args[0] += buf;
 
     var abortReason;
 
-    if (args[0].length > this.maxStringSequence)
-      abortReason = 'too long: ' + args[0].length;
-
-    if (args[0].indexOf('\x1b') != -1)
-      abortReason = 'embedded escape: ' + args[0].indexOf('\x1b');
+    // Special case: If our buffering happens to split the ST (\e\\), we have to
+    // buffer the content temporarily.  So don't reject a trailing escape here,
+    // instead we let it timeout or be rejected in the next pass.
+    if (terminator == '\x1b' && nextTerminator != buf.length - 1)
+      abortReason = 'embedded escape: ' + nextTerminator;
 
     if (new Date() - args[1] > this.oscTimeLimit_)
-      abortReason = 'timeout expired: ' + new Date() - args[1];
+      abortReason = 'timeout expired: ' + (new Date() - args[1]);
 
     if (abortReason) {
-      console.log('parseUntilStringTerminator_: aborting: ' + abortReason,
-                  args[0]);
+      if (this.warnUnimplemented)
+        console.log('parseUntilStringTerminator_: aborting: ' + abortReason,
+                    args[0]);
       parseState.reset(args[0]);
       return false;
     }
 
-    parseState.advance(buf.length);
+    parseState.advance(buf.length - bufInserted);
     return true;
-  }
-
-  if (args[0].length + nextTerminator > this.maxStringSequence) {
-    // We found the end of the sequence, but we still think it's too long.
-    parseState.reset(args[0] + buf);
-    return false;
   }
 
   args[0] += buf.substr(0, nextTerminator);
 
   parseState.resetParseFunction();
   parseState.advance(nextTerminator +
-                     (buf.substr(nextTerminator, 1) == '\x1b' ? 2 : 1));
+                     (terminator == '\x1b' ? 2 : 1) - bufInserted);
 
   return true;
 };
@@ -662,6 +815,12 @@ hterm.VT.prototype.dispatch = function(type, code, parseState) {
   if (handler == hterm.VT.ignore) {
     if (this.warnUnimplemented)
       console.warn('Ignored ' + type + ' code: ' + JSON.stringify(code));
+    return;
+  }
+
+  if (parseState.subargs && !handler.supportsSubargs) {
+    if (this.warnUnimplemented)
+      console.warn('Ignored ' + type + ' code w/subargs: ' + JSON.stringify(code));
     return;
   }
 
@@ -731,6 +890,12 @@ hterm.VT.prototype.setDECMode = function(code, state) {
       this.terminal.setWraparound(state);
       break;
 
+    case 9:  // Report on mouse down events only (X10).
+      this.mouseReport = (
+          state ? this.MOUSE_REPORT_PRESS : this.MOUSE_REPORT_DISABLED);
+      this.terminal.syncMouseStyle();
+      break;
+
     case 12:  // Start blinking cursor
       if (this.enableDec12)
         this.terminal.setCursorBlink(state);
@@ -756,7 +921,7 @@ hterm.VT.prototype.setDECMode = function(code, state) {
       this.terminal.keyboard.backspaceSendsBackspace = state;
       break;
 
-    case 1000:  // Report on mouse clicks only.
+    case 1000:  // Report on mouse clicks only (X11).
       this.mouseReport = (
           state ? this.MOUSE_REPORT_CLICK : this.MOUSE_REPORT_DISABLED);
       this.terminal.syncMouseStyle();
@@ -766,6 +931,24 @@ hterm.VT.prototype.setDECMode = function(code, state) {
       this.mouseReport = (
           state ? this.MOUSE_REPORT_DRAG : this.MOUSE_REPORT_DISABLED);
       this.terminal.syncMouseStyle();
+      break;
+
+    case 1004:  // Report on window focus change.
+      this.terminal.reportFocus = state;
+      break;
+
+    case 1005:  // Extended coordinates in UTF-8 mode.
+      this.mouseCoordinates = (
+          state ? this.MOUSE_COORDINATES_UTF8 : this.MOUSE_COORDINATES_X10);
+      break;
+
+    case 1006:  // Extended coordinates in SGR mode.
+      this.mouseCoordinates = (
+          state ? this.MOUSE_COORDINATES_SGR : this.MOUSE_COORDINATES_X10);
+      break;
+
+    case 1007:  // Enable Alternate Scroll Mode.
+      this.terminal.scrollWheelArrowKeys_ = state;
       break;
 
     case 1010:  // Scroll to bottom on tty output
@@ -800,16 +983,20 @@ hterm.VT.prototype.setDECMode = function(code, state) {
       break;
 
     case 1048:  // Save cursor as in DECSC.
-      this.savedState_.save();
+      if (state)
+        this.terminal.saveCursorAndState();
+      else
+        this.terminal.restoreCursorAndState();
+      break;
 
     case 1049:  // 1047 + 1048 + clear.
       if (state) {
-        this.savedState_.save();
+        this.terminal.saveCursorAndState();
         this.terminal.setAlternateMode(state);
         this.terminal.clear();
       } else {
         this.terminal.setAlternateMode(state);
-        this.savedState_.restore();
+        this.terminal.restoreCursorAndState();
       }
 
       break;
@@ -1194,6 +1381,11 @@ hterm.VT.ESC[']'] = function(parseState) {
     } else {
       console.warn('Invalid OSC: ' + JSON.stringify(parseState.args[0]));
     }
+
+    // Resetting the arguments isn't strictly necessary, but it makes debugging
+    // less confusing (otherwise args will stick around until the next sequence
+    // that needs arguments).
+    parseState.resetArguments();
   };
 
   parseState.func = parseOSC;
@@ -1257,21 +1449,56 @@ hterm.VT.ESC['#'] = function(parseState) {
 };
 
 /**
- * 'ESC %' sequences, character set control.  Not currently implemented.
- *
- * To be implemented (currently ignored):
- *   ESC % @ - Set ISO 8859-1 character set.
- *   ESC % G - Set UTF-8 character set.
- *
- * All other ESC % sequences are echoed to the terminal.
- *
- * TODO(rginda): Implement.
+ * Designate Other Coding System (DOCS).
  */
 hterm.VT.ESC['%'] = function(parseState) {
   parseState.func = function(parseState) {
     var ch = parseState.consumeChar();
-    if (ch != '@' && ch != 'G' && this.warnUnimplemented)
-      console.warn('Unknown ESC % argument: ' + JSON.stringify(ch));
+
+    // If we've locked the encoding, then just eat the bytes and return.
+    if (this.codingSystemLocked_) {
+      if (ch == '/')
+        parseState.consumeChar();
+      parseState.resetParseFunction();
+      return;
+    }
+
+    // Process the encoding requests.
+    switch (ch) {
+      case '@':
+        // Switch to ECMA 35.
+        this.setEncoding('iso-2022');
+        break;
+
+      case 'G':
+        // Switch to UTF-8.
+        this.setEncoding('utf-8');
+        break;
+
+      case '/':
+        // One way transition to something else.
+        ch = parseState.consumeChar();
+        switch (ch) {
+          case 'G':  // UTF-8 Level 1.
+          case 'H':  // UTF-8 Level 2.
+          case 'I':  // UTF-8 Level 3.
+            // We treat all UTF-8 levels the same.
+            this.setEncoding('utf-8-locked');
+            break;
+
+          default:
+            if (this.warnUnimplemented)
+              console.warn('Unknown ESC % / argument: ' + JSON.stringify(ch));
+            break;
+        }
+        break;
+
+      default:
+        if (this.warnUnimplemented)
+          console.warn('Unknown ESC % argument: ' + JSON.stringify(ch));
+        break;
+    }
+
     parseState.resetParseFunction();
   };
 };
@@ -1334,14 +1561,14 @@ hterm.VT.ESC['6'] = hterm.VT.ignore;
  * Save Cursor (DECSC).
  */
 hterm.VT.ESC['7'] = function() {
-  this.savedState_.save();
+  this.terminal.saveCursorAndState();
 };
 
 /**
  * Restore Cursor (DECRC).
  */
 hterm.VT.ESC['8'] = function() {
-  this.savedState_.restore();
+  this.terminal.restoreCursorAndState();
 };
 
 /**
@@ -1379,7 +1606,6 @@ hterm.VT.ESC['F'] = hterm.VT.ignore;
  * Full Reset (RIS).
  */
 hterm.VT.ESC['c'] = function() {
-  this.reset();
   this.terminal.reset();
 };
 
@@ -1488,6 +1714,54 @@ hterm.VT.OSC['4'] = function(parseState) {
 };
 
 /**
+ * Hyperlinks.
+ *
+ * The first argument is optional and colon separated:
+ *   id=<id>
+ * The second argument is the link itself.
+ *
+ * Calling with a non-blank URI starts it.  A blank URI stops it.
+ *
+ * https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
+ */
+hterm.VT.OSC['8'] = function(parseState) {
+  const args = parseState.args[0].split(';');
+  let id = null;
+  let uri = null;
+
+  if (args.length != 2 || args[1].length == 0) {
+    // Reset link.
+  } else {
+    // Pull out any colon separated parameters in the first argument.
+    const params = args[0].split(':');
+    id = '';
+    params.forEach((param) => {
+      const idx = param.indexOf('=');
+      if (idx == -1)
+        return;
+
+      const key = param.slice(0, idx);
+      const value = param.slice(idx + 1);
+      switch (key) {
+        case 'id':
+          id = value;
+          break;
+        default:
+          // Ignore unknown keys.
+          break;
+      }
+    });
+
+    // The URI is in the second argument.
+    uri = args[1];
+  }
+
+  const attrs = this.terminal.getTextAttributes();
+  attrs.uri = uri;
+  attrs.uriId = id;
+};
+
+/**
  * iTerm2 growl notifications.
  */
 hterm.VT.OSC['9'] = function(parseState) {
@@ -1531,10 +1805,31 @@ hterm.VT.OSC['11'] = function(parseState) {
   if (colorX11)
     this.terminal.setBackgroundColor(colorX11);
 
-  /* Note: If we support OSC 12+, we'd chain it here.
   if (args.length > 0) {
     parseState.args[0] = args.join(';');
     hterm.VT.OSC['12'].apply(this, [parseState]);
+  }
+};
+
+/**
+ * Change text cursor color.
+ */
+hterm.VT.OSC['12'] = function(parseState) {
+  // Args come in as a single string, but extra args will chain to the following
+  // OSC sequences.
+  var args = parseState.args[0].split(';');
+  if (!args)
+    return;
+
+  var colorArg;
+  var colorX11 = lib.colors.x11ToCSS(args.shift());
+  if (colorX11)
+    this.terminal.setCursorColor(colorX11);
+
+  /* Note: If we support OSC 13+, we'd chain it here.
+  if (args.length > 0) {
+    parseState.args[0] = args.join(';');
+    hterm.VT.OSC['13'].apply(this, [parseState]);
   }
   */
 };
@@ -1586,6 +1881,9 @@ hterm.VT.OSC['50'] = function(parseState) {
  * preference.
  */
 hterm.VT.OSC['52'] = function(parseState) {
+  if (!this.enableClipboardWrite)
+    return;
+
   // Args come in as a single 'clipboard;b64-data' string.  The clipboard
   // parameter is used to select which of the X clipboards to address.  Since
   // we're not integrating with X, we treat them all the same.
@@ -1596,6 +1894,85 @@ hterm.VT.OSC['52'] = function(parseState) {
   var data = window.atob(args[1]);
   if (data)
     this.terminal.copyStringToClipboard(this.decode(data));
+};
+
+/**
+ * iTerm2 extended sequences.
+ *
+ * We only support image display atm.
+ */
+hterm.VT.OSC['1337'] = function(parseState) {
+  // Args come in as a set of key value pairs followed by data.
+  // File=name=<base64>;size=123;inline=1:<base64 data>
+  let args = parseState.args[0].match(/^File=([^:]*):([\s\S]*)$/m);
+  if (!args) {
+    if (this.warnUnimplemented)
+      console.log(`iTerm2 1337: unsupported sequence: ${args[1]}`);
+    return;
+  }
+
+  const options = {
+    name: '',
+    size: 0,
+    preserveAspectRatio: true,
+    inline: false,
+    width: 'auto',
+    height: 'auto',
+    align: 'left',
+    uri: 'data:application/octet-stream;base64,' + args[2].replace(/[\n\r]+/gm, ''),
+  };
+  // Walk the "key=value;" sets.
+  args[1].split(';').forEach((ele) => {
+    const kv = ele.match(/^([^=]+)=(.*)$/m);
+    if (!kv)
+      return;
+
+    // Sanitize values nicely.
+    switch (kv[1]) {
+      case 'name':
+        try {
+          options.name = window.atob(kv[2]);
+        } catch (e) {}
+        break;
+      case 'size':
+        try {
+          options.size = parseInt(kv[2]);
+        } catch (e) {}
+        break;
+      case 'width':
+        options.width = kv[2];
+        break;
+      case 'height':
+        options.height = kv[2];
+        break;
+      case 'preserveAspectRatio':
+        options.preserveAspectRatio = !(kv[2] == '0');
+        break;
+      case 'inline':
+        options.inline = !(kv[2] == '0');
+        break;
+      // hterm-specific keys.
+      case 'align':
+        options.align = kv[2];
+        break;
+      default:
+        // Ignore unknown keys.  Don't want remote stuffing our JS env.
+        break;
+    }
+  });
+
+  // This is a bit of a hack.  If the buffer has data following the image, we
+  // need to delay processing of it until after we've finished with the image.
+  // Otherwise while we wait for the the image to load asynchronously, the new
+  // text data will intermingle with the image.
+  if (options.inline) {
+    const io = this.terminal.io;
+    const queued = parseState.peekRemainingBuf();
+    parseState.advance(queued.length);
+    this.terminal.displayImage(options);
+    io.writeUTF8(queued);
+  } else
+    this.terminal.displayImage(options);
 };
 
 /**
@@ -1689,7 +2066,9 @@ hterm.VT.CSI['F'] = function(parseState) {
 };
 
 /**
- * Cursor Character Absolute (CHA).
+ * Cursor Horizontal Absolute (CHA).
+ *
+ * Xterm calls this Cursor Character Absolute.
  */
 hterm.VT.CSI['G'] = function(parseState) {
   this.terminal.setCursorColumn(parseState.iarg(0, 1) - 1);
@@ -1829,7 +2208,7 @@ hterm.VT.CSI['Z'] = function(parseState) {
 /**
  * Character Position Absolute (HPA).
  *
- * Same as Cursor Character Absolute (CHA).
+ * Same as Cursor Horizontal Absolute (CHA).
  */
 hterm.VT.CSI['`'] = hterm.VT.CSI['G'];
 
@@ -1945,29 +2324,163 @@ hterm.VT.CSI['?l'] = function(parseState) {
 };
 
 /**
+ * Parse extended SGR 38/48 sequences.
+ *
+ * This deals with the various ISO 8613-6 forms, and with legacy xterm forms
+ * that are common in the wider application world.
+ *
+ * @param {hterm.VT.ParseState} parseState The current input state.
+ * @param {number} i The argument in parseState to start processing.
+ * @param {hterm.TextAttributes} attrs The current text attributes.
+ * @return {Object} The skipCount member defines how many arguments to skip
+ *     (i.e. how many were processed), and the color member is the color that
+ *     was successfully processed, or undefined if not.
+ */
+hterm.VT.prototype.parseSgrExtendedColors = function(parseState, i, attrs) {
+  let ary;
+  let usedSubargs;
+
+  if (parseState.argHasSubargs(i)) {
+    // The ISO 8613-6 compliant form.
+    // e.g. 38:[color choice]:[arg1]:[arg2]:...
+    ary = parseState.args[i].split(':');
+    ary.shift();  // Remove "38".
+    usedSubargs = true;
+  } else if (parseState.argHasSubargs(i + 1)) {
+    // The xterm form which isn't ISO 8613-6 compliant.  Not many emulators
+    // support this, and others actively do not want to.  We'll ignore it so
+    // at least the rest of the stream works correctly.  e.g. 38;2:R:G:B
+    // We return 0 here so we only skip the "38" ... we can't be confident the
+    // next arg is actually supposed to be part of it vs a typo where the next
+    // arg is legit.
+    return {skipCount: 0};
+  } else {
+    // The xterm form which isn't ISO 8613-6 compliant, but many emulators
+    // support, and many applications rely on.
+    // e.g. 38;2;R;G;B
+    ary = parseState.args.slice(i + 1);
+    usedSubargs = false;
+  }
+
+  // Figure out which form to parse.
+  switch (parseInt(ary[0])) {
+    default:  // Unknown.
+    case 0:  // Implementation defined.  We ignore it.
+      return {skipCount: 0};
+
+    case 1: {  // Transparent color.
+      // Require ISO 8613-6 form.
+      if (!usedSubargs)
+        return {skipCount: 0};
+
+      return {
+        color: 'rgba(0, 0, 0, 0)',
+        skipCount: 0,
+      };
+    }
+
+    case 2: {  // RGB color.
+      // Skip over the color space identifier, if it exists.
+      let start;
+      if (usedSubargs) {
+        // The ISO 8613-6 compliant form:
+        //   38:2:<color space id>:R:G:B[:...]
+        // The xterm form isn't ISO 8613-6 compliant.
+        //   38:2:R:G:B
+        // Since the ISO 8613-6 form requires at least 5 arguments,
+        // we can still support the xterm form unambiguously.
+        if (ary.length == 4)
+          start = 1;
+        else
+          start = 2;
+      } else {
+        // The legacy xterm form: 38;2;R;G;B
+        start = 1;
+      }
+
+      // We need at least 3 args for RGB.  If we don't have them, assume this
+      // sequence is corrupted, so don't eat anything more.
+      // We ignore more than 3 args on purpose since ISO 8613-6 defines some,
+      // and we don't care about them.
+      if (ary.length < start + 3)
+        return {skipCount: 0};
+
+      const r = parseState.parseInt(ary[start + 0]);
+      const g = parseState.parseInt(ary[start + 1]);
+      const b = parseState.parseInt(ary[start + 2]);
+      return {
+        color: `rgb(${r}, ${g}, ${b})`,
+        skipCount: usedSubargs ? 0 : 4,
+      };
+    }
+
+    case 3: {  // CMY color.
+      // No need to support xterm/legacy forms as xterm doesn't support CMY.
+      if (!usedSubargs)
+        return {skipCount: 0};
+
+      // We need at least 4 args for CMY.  If we don't have them, assume
+      // this sequence is corrupted.  We ignore the color space identifier,
+      // tolerance, etc...
+      if (ary.length < 4)
+        return {skipCount: 0};
+
+      // TODO: See CMYK below.
+      const c = parseState.parseInt(ary[1]);
+      const m = parseState.parseInt(ary[2]);
+      const y = parseState.parseInt(ary[3]);
+      return {skipCount: 0};
+    }
+
+    case 4: {  // CMYK color.
+      // No need to support xterm/legacy forms as xterm doesn't support CMYK.
+      if (!usedSubargs)
+        return {skipCount: 0};
+
+      // We need at least 5 args for CMYK.  If we don't have them, assume
+      // this sequence is corrupted.  We ignore the color space identifier,
+      // tolerance, etc...
+      if (ary.length < 5)
+        return {skipCount: 0};
+
+      // TODO: Implement this.
+      // Might wait until CSS4 is adopted for device-cmyk():
+      // https://www.w3.org/TR/css-color-4/#cmyk-colors
+      // Or normalize it to RGB ourselves:
+      // https://www.w3.org/TR/css-color-4/#cmyk-rgb
+      const c = parseState.parseInt(ary[1]);
+      const m = parseState.parseInt(ary[2]);
+      const y = parseState.parseInt(ary[3]);
+      const k = parseState.parseInt(ary[4]);
+      return {skipCount: 0};
+    }
+
+    case 5: {  // Color palette index.
+      // If we're short on args, assume this sequence is corrupted, so don't
+      // eat anything more.
+      if (ary.length < 2)
+        return {skipCount: 0};
+
+      // Support 38:5:P (ISO 8613-6) and 38;5;P (xterm/legacy).
+      // We also ignore extra args with 38:5:P:[...], but more for laziness.
+      const ret = {
+        skipCount: usedSubargs ? 0 : 2,
+      };
+      const color = parseState.parseInt(ary[1]);
+      if (color < attrs.colorPalette.length)
+        ret.color = color;
+      return ret;
+    }
+  }
+};
+
+/**
  * Character Attributes (SGR).
  *
  * Iterate through the list of arguments, applying the attribute changes based
  * on the argument value...
  */
 hterm.VT.CSI['m'] = function(parseState) {
-  function get256(i) {
-    if (parseState.args.length < i + 2 || parseState.args[i + 1] != 5)
-      return null;
-
-    return parseState.iarg(i + 2, 0);
-  }
-
-  function getTrueColor(i) {
-    if (parseState.args.length < i + 5 || parseState.args[i + 1] != 2)
-      return null;
-    var r = parseState.iarg(i + 2, 0);
-    var g = parseState.iarg(i + 3, 0);
-    var b = parseState.iarg(i + 4, 0);
-
-    return 'rgb(' + r + ' ,' + g + ' ,' + b + ')';
-  }
-
   var attrs = this.terminal.getTextAttributes();
 
   if (!parseState.args.length) {
@@ -1976,6 +2489,8 @@ hterm.VT.CSI['m'] = function(parseState) {
   }
 
   for (var i = 0; i < parseState.args.length; i++) {
+    // If this argument has subargs (i.e. it has args followed by colons),
+    // the iarg logic will implicitly truncate that off for us.
     var arg = parseState.iarg(i, 0);
 
     if (arg < 30) {
@@ -1997,6 +2512,8 @@ hterm.VT.CSI['m'] = function(parseState) {
         attrs.invisible = true;
       } else if (arg == 9) {  // Crossed out.
         attrs.strikethrough = true;
+      } else if (arg == 21) {  // Double underlined.
+        attrs.doubleUnderline = true;
       } else if (arg == 22) {  // Not bold & not faint.
         attrs.bold = false;
         attrs.faint = false;
@@ -2004,6 +2521,7 @@ hterm.VT.CSI['m'] = function(parseState) {
         attrs.italic = false;
       } else if (arg == 24) {  // Not underlined.
         attrs.underline = false;
+        attrs.doubleUnderline = false;
       } else if (arg == 25) {  // Not blink.
         attrs.blink = false;
       } else if (arg == 27) {  // Steady.
@@ -2022,26 +2540,10 @@ hterm.VT.CSI['m'] = function(parseState) {
         attrs.foregroundSource = arg - 30;
 
       } else if (arg == 38) {
-        // First check for true color definition
-        var trueColor = getTrueColor(i);
-        if (trueColor != null) {
-          attrs.foregroundSource = attrs.SRC_RGB;
-          attrs.foreground = trueColor;
-
-          i += 5;
-        } else {
-          // Check for 256 color
-          var c = get256(i);
-          if (c == null)
-            break;
-
-          i += 2;
-
-          if (c >= attrs.colorPalette.length)
-            continue;
-
-          attrs.foregroundSource = c;
-        }
+        const result = this.parseSgrExtendedColors(parseState, i, attrs);
+        if (result.color !== undefined)
+          attrs.foregroundSource = result.color;
+        i += result.skipCount;
 
       } else if (arg == 39) {
         attrs.foregroundSource = attrs.SRC_DEFAULT;
@@ -2050,26 +2552,11 @@ hterm.VT.CSI['m'] = function(parseState) {
         attrs.backgroundSource = arg - 40;
 
       } else if (arg == 48) {
-        // First check for true color definition
-        var trueColor = getTrueColor(i);
-        if (trueColor != null) {
-          attrs.backgroundSource = attrs.SRC_RGB;
-          attrs.background = trueColor;
+        const result = this.parseSgrExtendedColors(parseState, i, attrs);
+        if (result.color !== undefined)
+          attrs.backgroundSource = result.color;
+        i += result.skipCount;
 
-          i += 5;
-        } else {
-          // Check for 256 color
-          var c = get256(i);
-          if (c == null)
-            break;
-
-          i += 2;
-
-          if (c >= attrs.colorPalette.length)
-            continue;
-
-          attrs.backgroundSource = c;
-        }
       } else {
         attrs.backgroundSource = attrs.SRC_DEFAULT;
       }
@@ -2085,6 +2572,9 @@ hterm.VT.CSI['m'] = function(parseState) {
   attrs.setDefaults(this.terminal.getForegroundColor(),
                     this.terminal.getBackgroundColor());
 };
+
+// SGR calls can handle subargs.
+hterm.VT.CSI['m'].supportsSubargs = true;
 
 /**
  * Set xterm-specific keyboard modes.
@@ -2164,7 +2654,6 @@ hterm.VT.CSI['>p'] = hterm.VT.ignore;
  * Soft terminal reset (DECSTR).
  */
 hterm.VT.CSI['!p'] = function() {
-  this.reset();
   this.terminal.softReset();
 };
 
@@ -2256,7 +2745,7 @@ hterm.VT.CSI['$r'] = hterm.VT.ignore;
  * Save cursor (ANSI.SYS)
  */
 hterm.VT.CSI['s'] = function() {
-  this.savedState_.save();
+  this.terminal.saveCursorAndState();
 };
 
 /**
@@ -2298,7 +2787,7 @@ hterm.VT.CSI[' t'] = hterm.VT.ignore;
  * Restore cursor (ANSI.SYS).
  */
 hterm.VT.CSI['u'] = function() {
-  this.savedState_.restore();
+  this.terminal.restoreCursorAndState();
 };
 
 /**

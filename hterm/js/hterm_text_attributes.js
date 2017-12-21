@@ -24,7 +24,7 @@ hterm.TextAttributes = function(document) {
   this.document_ = document;
   // These variables contain the source of the color as either:
   // SRC_DEFAULT  (use context default)
-  // SRC_RGB      (specified in 'rgb( r, g, b)' form)
+  // rgb(...)     (true color form)
   // number       (representing the index from color palette to use)
   this.foregroundSource = this.SRC_DEFAULT;
   this.backgroundSource = this.SRC_DEFAULT;
@@ -37,16 +37,23 @@ hterm.TextAttributes = function(document) {
   this.defaultForeground = 'rgb(255, 255, 255)';
   this.defaultBackground = 'rgb(0, 0, 0)';
 
+  // Any attributes added here that do not default to falsey (e.g. undefined or
+  // null) require a bit more care.  createContainer has to always attach the
+  // attribute so matchesContainer can work correctly.
   this.bold = false;
   this.faint = false;
   this.italic = false;
   this.blink = false;
   this.underline = false;
+  this.doubleUnderline = false;
   this.strikethrough = false;
   this.inverse = false;
   this.invisible = false;
   this.wcNode = false;
+  this.asciiNode = true;
   this.tileData = null;
+  this.uri = null;
+  this.uriId = null;
 
   this.colorPalette = null;
   this.resetColorPalette();
@@ -76,13 +83,6 @@ hterm.TextAttributes.prototype.DEFAULT_COLOR = lib.f.createEnum('');
  * A constant string used to specify that source color is context default.
  */
 hterm.TextAttributes.prototype.SRC_DEFAULT = 'default';
-
-
-/**
- * A constant string used to specify that the source of a color is a valid
- * rgb( r, g, b) specifier.
- */
-hterm.TextAttributes.prototype.SRC_RGB = 'rgb';
 
 /**
  * The document object which should own the DOM nodes created by this instance.
@@ -125,10 +125,14 @@ hterm.TextAttributes.prototype.reset = function() {
   this.italic = false;
   this.blink = false;
   this.underline = false;
+  this.doubleUnderline = false;
   this.strikethrough = false;
   this.inverse = false;
   this.invisible = false;
   this.wcNode = false;
+  this.asciiNode = true;
+  this.uri = null;
+  this.uriId = null;
 };
 
 /**
@@ -152,11 +156,14 @@ hterm.TextAttributes.prototype.isDefault = function() {
           !this.italic &&
           !this.blink &&
           !this.underline &&
+          !this.doubleUnderline &&
           !this.strikethrough &&
           !this.inverse &&
           !this.invisible &&
           !this.wcNode &&
-          this.tileData == null);
+          this.asciiNode &&
+          this.tileData == null &&
+          this.uri == null);
 };
 
 /**
@@ -175,8 +182,13 @@ hterm.TextAttributes.prototype.isDefault = function() {
  *     attributes.
  */
 hterm.TextAttributes.prototype.createContainer = function(opt_textContent) {
-  if (this.isDefault())
-    return this.document_.createTextNode(opt_textContent);
+  if (this.isDefault()) {
+    // Only attach attributes where we need an explicit default for the
+    // matchContainer logic below.
+    const node = this.document_.createTextNode(opt_textContent);
+    node.asciiNode = true;
+    return node;
+  }
 
   var span = this.document_.createElement('span');
   var style = span.style;
@@ -202,23 +214,33 @@ hterm.TextAttributes.prototype.createContainer = function(opt_textContent) {
     span.blinkNode = true;
   }
 
-  var textDecoration = '';
+  let textDecorationLine = '';
+  let textDecorationStyle = '';
   if (this.underline) {
-    textDecoration += ' underline';
+    textDecorationLine += ' underline';
     span.underline = true;
   }
+  if (this.doubleUnderline) {
+    // The web platform doesn't like the same keyword twice.
+    if (!this.underline)
+      textDecorationLine += ' underline';
+    textDecorationStyle = 'double';
+    span.doubleUnderline = true;
+  }
   if (this.strikethrough) {
-    textDecoration += ' line-through';
+    textDecorationLine += ' line-through';
     span.strikethrough = true;
   }
-  if (textDecoration) {
-    style.textDecoration = textDecoration;
-  }
+  if (textDecorationLine)
+    style.textDecorationLine = textDecorationLine;
+  if (textDecorationStyle)
+    style.textDecorationStyle = textDecorationStyle;
 
   if (this.wcNode) {
     classes.push('wc-node');
     span.wcNode = true;
   }
+  span.asciiNode = this.asciiNode;
 
   if (this.tileData != null) {
     classes.push('tile');
@@ -228,6 +250,13 @@ hterm.TextAttributes.prototype.createContainer = function(opt_textContent) {
 
   if (opt_textContent)
     span.textContent = opt_textContent;
+
+  if (this.uri) {
+    classes.push('uri-node');
+    span.uriId = this.uriId;
+    span.title = this.uri;
+    span.addEventListener('click', hterm.openUrl.bind(this, this.uri));
+  }
 
   if (classes.length)
     span.className = classes.join(' ');
@@ -249,21 +278,27 @@ hterm.TextAttributes.prototype.createContainer = function(opt_textContent) {
  *     this attributes instance.
  */
 hterm.TextAttributes.prototype.matchesContainer = function(obj) {
-  if (typeof obj == 'string' || obj.nodeType == 3)
+  if (typeof obj == 'string' || obj.nodeType == Node.TEXT_NODE)
     return this.isDefault();
 
   var style = obj.style;
 
   // We don't want to put multiple characters in a wcNode or a tile.
   // See the comments in createContainer.
+  // For attributes that default to false, we do not require that obj have them
+  // declared, so always normalize them using !! (to turn undefined into false)
+  // in the compares below.
   return (!(this.wcNode || obj.wcNode) &&
+          this.asciiNode == obj.asciiNode &&
           !(this.tileData != null || obj.tileNode) &&
+          this.uriId == obj.uriId &&
           this.foreground == style.color &&
           this.background == style.backgroundColor &&
           (this.enableBold && this.bold) == !!style.fontWeight &&
-          this.blink == obj.blinkNode &&
+          this.blink == !!obj.blinkNode &&
           this.italic == !!style.fontStyle &&
           !!this.underline == !!obj.underline &&
+          !!this.doubleUnderline == !!obj.doubleUnderline &&
           !!this.strikethrough == !!obj.strikethrough);
 };
 
@@ -310,33 +345,34 @@ hterm.TextAttributes.prototype.syncColors = function() {
   }
 
   if (this.enableBoldAsBright && this.bold) {
-    if (foregroundSource != this.SRC_DEFAULT &&
-        foregroundSource != this.SRC_RGB) {
+    if (Number.isInteger(foregroundSource)) {
       foregroundSource = getBrightIndex(foregroundSource);
     }
   }
 
-  if (this.invisible) {
-    foregroundSource = backgroundSource;
-    defaultForeground = this.defaultBackground;
-  }
+  if (foregroundSource == this.SRC_DEFAULT)
+    this.foreground = defaultForeground;
+  else if (Number.isInteger(foregroundSource))
+    this.foreground = this.colorPalette[foregroundSource];
+  else
+    this.foreground = foregroundSource;
 
-  // Set fore/background colors unless already specified in rgb(r, g, b) form.
-  if (foregroundSource != this.SRC_RGB) {
-    this.foreground = ((foregroundSource == this.SRC_DEFAULT) ?
-                       defaultForeground : this.colorPalette[foregroundSource]);
-  }
-
-  if (this.faint && !this.invisible) {
+  if (this.faint) {
     var colorToMakeFaint = ((this.foreground == this.DEFAULT_COLOR) ?
                             this.defaultForeground : this.foreground);
     this.foreground = lib.colors.mix(colorToMakeFaint, 'rgb(0, 0, 0)', 0.3333);
   }
 
-  if (backgroundSource != this.SRC_RGB) {
-    this.background = ((backgroundSource == this.SRC_DEFAULT) ?
-                       defaultBackground : this.colorPalette[backgroundSource]);
-  }
+  if (backgroundSource == this.SRC_DEFAULT)
+    this.background = defaultBackground;
+  else if (Number.isInteger(backgroundSource))
+    this.background = this.colorPalette[backgroundSource];
+  else
+    this.background = backgroundSource;
+
+  // Process invisible settings last to keep it simple.
+  if (this.invisible)
+    this.foreground = this.background;
 };
 
 /**
@@ -356,7 +392,7 @@ hterm.TextAttributes.containersMatch = function(obj1, obj2) {
   if (obj1.nodeType != obj2.nodeType)
     return false;
 
-  if (obj1.nodeType == 3)
+  if (obj1.nodeType == Node.TEXT_NODE)
     return true;
 
   var style1 = obj1.style;
@@ -378,7 +414,7 @@ hterm.TextAttributes.containersMatch = function(obj1, obj2) {
  * @return {boolean} True if the object is unstyled.
  */
 hterm.TextAttributes.containerIsDefault = function(obj) {
-  return typeof obj == 'string'  || obj.nodeType == 3;
+  return typeof obj == 'string'  || obj.nodeType == Node.TEXT_NODE;
 };
 
 /**
@@ -389,7 +425,7 @@ hterm.TextAttributes.containerIsDefault = function(obj) {
  * @return {integer} The column width of the node's textContent.
  */
 hterm.TextAttributes.nodeWidth = function(node) {
-  if (node.wcNode) {
+  if (!node.asciiNode) {
     return lib.wc.strWidth(node.textContent);
   } else {
     return node.textContent.length;
@@ -407,7 +443,7 @@ hterm.TextAttributes.nodeWidth = function(node) {
  * @return {integer} The extracted substr of the node's textContent.
  */
 hterm.TextAttributes.nodeSubstr = function(node, start, width) {
-  if (node.wcNode) {
+  if (!node.asciiNode) {
     return lib.wc.substr(node.textContent, start, width);
   } else {
     return node.textContent.substr(start, width);
@@ -425,7 +461,7 @@ hterm.TextAttributes.nodeSubstr = function(node, start, width) {
  * @return {integer} The extracted substring of the node's textContent.
  */
 hterm.TextAttributes.nodeSubstring = function(node, start, end) {
-  if (node.wcNode) {
+  if (!node.asciiNode) {
     return lib.wc.substring(node.textContent, start, end);
   } else {
     return node.textContent.substring(start, end);
@@ -439,31 +475,59 @@ hterm.TextAttributes.nodeSubstring = function(node, start, end) {
  * @param {string} str The string to split.
  * @return {Array} An array of objects that contain substrings of str, where
  *     each substring is either a contiguous runs of single-width characters
- *     or a double-width character.  For object that contains a double-width
- *     character, its wcNode property is set to true.
+ *     or a double-width character.  For objects that contain a double-width
+ *     character, its wcNode property is set to true.  For objects that contain
+ *     only ASCII content, its asciiNode property is set to true.
  */
 hterm.TextAttributes.splitWidecharString = function(str) {
   var rv = [];
-  var base = 0, length = 0;
+  var base = 0, length = 0, wcStrWidth = 0, wcCharWidth;
+  var asciiNode = true;
 
   for (var i = 0; i < str.length;) {
     var c = str.codePointAt(i);
-    var increment = (c <= 0xffff) ? 1 : 2;
-    if (c < 128 || lib.wc.charWidth(c) == 1) {
-      length += increment;
+    var increment;
+    if (c < 128) {
+      wcStrWidth += 1;
+      length += 1;
+      increment = 1;
     } else {
-      if (length) {
-        rv.push({str: str.substr(base, length)});
+      increment = (c <= 0xffff) ? 1 : 2;
+      wcCharWidth = lib.wc.charWidth(c);
+      if (wcCharWidth <= 1) {
+        wcStrWidth += wcCharWidth;
+        length += increment;
+        asciiNode = false;
+      } else {
+        if (length) {
+          rv.push({
+            str: str.substr(base, length),
+            asciiNode: asciiNode,
+            wcStrWidth: wcStrWidth,
+          });
+          asciiNode = true;
+          wcStrWidth = 0;
+        }
+        rv.push({
+          str: str.substr(i, increment),
+          wcNode: true,
+          asciiNode: false,
+          wcStrWidth: 2,
+        });
+        base = i + increment;
+        length = 0;
       }
-      rv.push({str: str.substr(i, increment), wcNode: true});
-      base = i + increment;
-      length = 0;
     }
     i += increment;
   }
 
-  if (length)
-    rv.push({str: str.substr(base, length)});
+  if (length) {
+    rv.push({
+      str: str.substr(base, length),
+      asciiNode: asciiNode,
+      wcStrWidth: wcStrWidth,
+    });
+  }
 
   return rv;
 };

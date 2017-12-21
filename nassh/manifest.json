@@ -4,7 +4,7 @@
   "manifest_version": 2,
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "name": "Secure Shell (tot)",
-  "version": "0.8.36.8",
+  "version": "0.8.41",
   "default_locale": "en",
   "icons": {
     "128": "images/dev/icon-128.png",
@@ -37,6 +37,7 @@
   "background": {
     "persistent": false,
     "scripts": [
+      "third_party/google-smart-card/google-smart-card-client-library.js",
       "js/nassh_deps.concat.js",
       "js/nassh.js",
       "js/nassh_app.js",
@@ -44,6 +45,7 @@
       "js/nassh_stream.js",
       "js/nassh_stream_set.js",
       "js/nassh_stream_tty.js",
+      "js/nassh_stream_sshagent.js",
       "js/nassh_stream_sshagent_relay.js",
       "js/nassh_stream_google_relay.js",
       "js/nassh_google_relay.js",
@@ -52,6 +54,11 @@
       "js/nassh_sftp_packet_types.js",
       "js/nassh_sftp_status.js",
       "js/nassh_sftp_fsp.js",
+      "js/nassh_agent_message.js",
+      "js/nassh_agent_message_types.js",
+      "js/nassh_agent.js",
+      "js/nassh_agent_backend.js",
+      "js/nassh_agent_backend_gsc.js",
       "js/nassh_command_instance.js",
       "js/nassh_background.js"
     ]

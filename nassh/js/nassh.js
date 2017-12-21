@@ -26,10 +26,6 @@ lib.registerInit('nassh', function(onInit) {
   onInit();
 });
 
-nassh.test = function() {
-  window.open(chrome.extension.getURL('html/nassh_test.html'));
-};
-
 /**
  * Return a formatted message in the current locale.
  *
@@ -44,7 +40,12 @@ nassh.msg = function(name, opt_args) {
   if (!rv)
     console.log('Missing message: ' + name);
 
-  return rv;
+  // Since our translation process only preserves \n (and discards \r), we have
+  // to manually insert them here ourselves.  Any place we display translations
+  // should be able to handle \r correctly, and keeps us from having to remember
+  // to do it whenever we need to.  If a situation comes up where we don't want
+  // the \r, we can reevaluate this decision then.
+  return rv.replace(/\n/g, '\n\r');
 };
 
 /**
@@ -111,8 +112,8 @@ nassh.exportPreferences = function(onComplete) {
   var pendingReads = 0;
   var rv = {};
 
-  var onReadStorage = function(terminalProfile, prefs) {
-    rv.hterm[terminalProfile] = prefs.exportAsJson();
+  var onReadStorage = function(profile, prefs) {
+    rv.hterm[profile] = prefs.exportAsJson();
     if (--pendingReads < 1)
       onComplete(rv);
   };
@@ -122,29 +123,22 @@ nassh.exportPreferences = function(onComplete) {
 
   var nasshPrefs = new nassh.PreferenceManager();
   nasshPrefs.readStorage(function() {
+    // Export all the connection settings.
     rv.nassh = nasshPrefs.exportAsJson();
+
+    // Save all the profiles.
     rv.hterm = {};
-
-    var profileIds = nasshPrefs.get('profile-ids');
-    if (profileIds.length == 0) {
-      onComplete(rv);
-      return;
-    }
-
-    for (var i = 0; i < profileIds.length; i++) {
-      var nasshProfilePrefs = nasshPrefs.getChild('profile-ids', profileIds[i]);
-      var terminalProfile = nasshProfilePrefs.get('terminal-profile');
-      if (!terminalProfile)
-        terminalProfile = 'default';
-
-      if (!(terminalProfile in rv.hterm)) {
-        rv.hterm[terminalProfile] = null;
-
-        var prefs = new hterm.PreferenceManager(terminalProfile);
-        prefs.readStorage(onReadStorage.bind(null, terminalProfile, prefs));
+    hterm.PreferenceManager.listProfiles((profiles) => {
+      profiles.forEach((profile) => {
+        rv.hterm[profile] = null;
+        const prefs = new hterm.PreferenceManager(profile);
+        prefs.readStorage(onReadStorage.bind(null, profile, prefs));
         pendingReads++;
-      }
-    }
+      });
+
+      if (profiles.length == 0)
+        onComplete(rv);
+    });
   });
 };
 
@@ -174,37 +168,23 @@ nassh.importPreferences = function(prefsObject, opt_onComplete) {
     throw new Error('Bad version, expected 1, got: ' + prefsObject.version);
 
   var nasshPrefs = new nassh.PreferenceManager();
-  nasshPrefs.importFromJson(prefsObject.nassh);
-
-  for (var terminalProfile in prefsObject.hterm) {
-    var prefs = new hterm.PreferenceManager(terminalProfile);
-    prefs.readStorage(onReadStorage.bind(null, terminalProfile, prefs));
-    pendingReads++;
-  }
+  nasshPrefs.importFromJson(prefsObject.nassh, () => {
+    for (var terminalProfile in prefsObject.hterm) {
+      var prefs = new hterm.PreferenceManager(terminalProfile);
+      prefs.readStorage(onReadStorage.bind(null, terminalProfile, prefs));
+      pendingReads++;
+    }
+  });
 };
 
 /**
  * Create a new window to the options page for customizing preferences.
  */
 nassh.openOptionsPage = function() {
-  if (nassh.v2) {
-    var optionsWindow = chrome.app.window.get('options_page');
-    // If the options window is not open, opens it, else brings it to the
-    // foreground.
-    if (!optionsWindow) {
-      chrome.app.window.create('/html/nassh_preferences_editor.html', {
-        'bounds': {
-          'width': 700,
-          'height': 800
-        },
-        'id': 'options_page'
-      });
-    } else {
-      optionsWindow.focus();
-    }
-  } else {
+  if (window.chrome && chrome.runtime && chrome.runtime.openOptionsPage)
+    chrome.runtime.openOptionsPage();
+  else
     window.open('/html/nassh_preferences_editor.html');
-  }
 };
 
 nassh.reloadWindow = function() {
